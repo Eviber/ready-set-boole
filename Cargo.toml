@@ -5,4 +5,12 @@ edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[[bin]]
+name = "ex00"
+path = "src/ex00/ex00.rs"
+
+[[bin]]
+name = "ex01"
+path = "src/ex01/ex01.rs"
+
 [dependencies]
