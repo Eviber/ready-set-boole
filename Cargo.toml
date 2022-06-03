@@ -13,4 +13,8 @@ path = "src/ex00/ex00.rs"
 name = "ex01"
 path = "src/ex01/ex01.rs"
 
+[[bin]]
+name = "ex02"
+path = "src/ex02/ex02.rs"
+
 [dependencies]
