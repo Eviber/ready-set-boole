@@ -1,7 +1,7 @@
 // an AST to parse logical expressions in rpn
 
 #[allow(dead_code)]
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 enum BinOp {
     And,
     Or,
@@ -20,7 +20,6 @@ enum Node {
 use Node::*;
 use BinOp::*;
 
-// 101|&
 fn parse(input: &str) -> Result<Node, String> {
     let mut stack = Vec::with_capacity(42);
 
@@ -70,6 +69,46 @@ impl std::fmt::Display for BinOp {
     }
 }
 
+fn eval_binary_ref(op: BinOp, left: &Node, right: &Node) -> bool {
+    let left = eval_tree_ref(left);
+    let right = eval_tree_ref(right);
+    match op {
+        And => left & right,
+        Or => left | right,
+        Xor => left ^ right,
+        Impl => !(left & !right),
+        Leq => left == right,
+    }
+}
+
+fn eval_tree_ref(node: &Node) -> bool {
+    match node {
+        Val(x) => *x,
+        Not { operand } => !eval_tree_ref(operand),
+        Binary { op, left, right } => eval_binary_ref(*op, left, right),
+    }
+}
+
+fn eval_binary(op: BinOp, left: Node, right: Node) -> bool {
+    let left = eval_tree(left);
+    let right = eval_tree(right);
+    match op {
+        And => left & right,
+        Or => left | right,
+        Xor => left ^ right,
+        Impl => !left | right,
+        Leq => left == right,
+    }
+}
+
+fn eval_tree(node: Node) -> bool {
+    match node {
+        Val(x) => x,
+        Not { operand } => !eval_tree(*operand),
+        Binary { op, left, right } => eval_binary(op, *left, *right),
+    }
+}
+
 // prints a dot graph of the AST
 // use dot -Tpng -o ex03.png ex03.dot
 
@@ -113,40 +152,69 @@ fn get_node_addr(node: &Node) -> usize {
     unsafe { transmute(node) }
 }
 
+/*
+fn print_node(node: Node) {
+    print!("(");
+    print_node(left);
+    print!("{}",
+        match op {
+            And => " && ",
+            Or => " || ",
+            Xor => " ^ ",
+            Impl => " -> ",
+            Leq => " <= ",
+        }
+}
+*/
+
 fn main() {
     // lets try a long rpn expression
     let input = random_rpn_expr();
-    println!("{}", input);
     let node = parse(&input).unwrap();
     // call draw_ast on the root node
     print_dot(&node);
     // for debugging purposes, print the AST in stderr
-    eprintln!("{:?}", node);
+    eprintln!("{}", input);
+    eprintln!("{}", eval_tree_ref(&node));
 }
 
 use std::fs::File;
 use std::io::Read;
 
 fn random_rpn_expr() -> String {
-    let mut rng = || {
+    let rng = || {
         // get a random number from /dev/urandom
         let mut f = File::open("/dev/urandom").unwrap();
         let mut buf = [0u8; 1];
         f.read_exact(&mut buf).unwrap();
         buf[0] as usize
     };
-    let mut expr = String::new();
-    let mut stack = Vec::new();
-    let mut binops = vec![
-        '&', '|', '^', '>', '='
+    let mut rpn = String::new();
+    let ops = vec![
+        '&', '|', '^', '>', '=', '!', '0', '1',
     ];
-    for _ in 0..rng() % 100 {
-        // add two values and a binary operator to the expression
-        expr.push_str(&format!("{}", rng() % 2));
-        expr.push_str(&format!("{}", rng() % 2));
-        expr.push_str(&format!("{}", binops[rng() % binops.len()]));
+    let vals = vec!['0', '1'];
+    let mut needed = 1;
+    while needed > 0 {
+        // if the expression is too long, only use operators
+        let op = if rpn.len() == 0 {
+            ops[rng() % (ops.len() - 2)]
+        } else {
+            match needed {
+                1..=3 => ops[rng() % ops.len()],
+                _ => vals[rng() % vals.len()],
+            }
+        };
+        // push the operator at the start of the expression
+        rpn.insert(0, op);
+        needed -= 1;
+        needed += match op {
+            '0' | '1' => 0,
+            '!' => 1,
+            _ => 2,
+        };
     }
-    expr
+    rpn
 }
 
 #[test]
