@@ -94,7 +94,7 @@ impl std::str::FromStr for Node {
                     stack.push(Not { operand: Box::new(operand) });
                 }
                 _ => {
-                    let op = c.try_into()?; // convert char to BinOp
+                    let op = c.try_into()?; // InvalidCharacter
                     let right = stack.pop().ok_or(MissingOperand)?;
                     let left = stack.pop().ok_or(MissingOperand)?;
                     stack.push(Binary {
@@ -113,35 +113,27 @@ impl std::str::FromStr for Node {
     }
 }
 
-impl From<&Box<Node>> for bool {
-    fn from(node: &Box<Node>) -> Self {
-        Self::from(node.as_ref())
-    }
-}
-
-impl From<&Node> for bool {
-    fn from(node: &Node) -> Self {
-        match node {
-            Val(x) => *x,
-            Not { operand } => !Self::from(operand),
-            Binary { op, left, right } => {
-                let left = || Self::from(left);
-                let right = || Self::from(right);
-                match op {
-                    And =>  left() && right(),
-                    Or => left() || right(),
-                    Xor => left() ^ right(),
-                    Impl => !left() || right(),
-                    Leq => left() == right(),
-                }
-            },
-        }
+impl Node {
+    fn eval(self) -> bool {
+        bool::from(self)
     }
 }
 
 impl From<Node> for bool {
     fn from(node: Node) -> Self {
-        Self::from(&node)
+        match node {
+            Val(x) => x,
+            Not { operand } => !operand.eval(),
+            Binary { op, left, right } => {
+                match op {
+                    And => left.eval() && right.eval(),
+                    Or => left.eval() || right.eval(),
+                    Xor => left.eval() ^ right.eval(),
+                    Impl => !left.eval() || right.eval(),
+                    Leq => left.eval() == right.eval(),
+                }
+            },
+        }
     }
 }
 
@@ -190,7 +182,7 @@ fn main() -> Result<(), ParseError> {
     let node = input.parse()?;
     eprintln!("{}", input);
     print_dot(&node);
-    eprintln!("{}", bool::from(&node));
+    eprintln!("{}", bool::from(node));
     Ok(())
 }
 
