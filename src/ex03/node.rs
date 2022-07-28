@@ -1,3 +1,8 @@
+use std::fmt;
+use BinOp::*;
+use Node::*;
+use ParseError::*;
+
 #[derive(Clone, Copy)]
 pub enum BinOp {
     And,
@@ -8,8 +13,14 @@ pub enum BinOp {
 }
 
 pub enum Node {
-    Binary { op: BinOp, left: Box<Node>, right: Box<Node> },
-    Not { operand: Box<Node> },
+    Binary {
+        op: BinOp,
+        left: Box<Node>,
+        right: Box<Node>,
+    },
+    Not {
+        operand: Box<Node>,
+    },
     Val(bool),
 }
 
@@ -19,11 +30,6 @@ pub enum ParseError {
     InvalidCharacter(char),
     UnbalancedExpression,
 }
-
-use Node::*;
-use BinOp::*;
-use ParseError::*;
-use std::fmt;
 
 impl TryFrom<char> for BinOp {
     type Error = ParseError;
@@ -88,7 +94,9 @@ impl std::str::FromStr for Node {
                 '1' => stack.push(Val(true)),
                 '!' => {
                     let operand = stack.pop().ok_or(MissingOperand)?;
-                    stack.push(Not { operand: Box::new(operand) });
+                    stack.push(Not {
+                        operand: Box::new(operand),
+                    });
                 }
                 _ => {
                     let op = c.try_into()?; // InvalidCharacter
@@ -121,14 +129,12 @@ impl From<Node> for bool {
         match node {
             Val(x) => x,
             Not { operand } => !operand.eval(),
-            Binary { op, left, right } => {
-                match op {
-                    And => left.eval() && right.eval(),
-                    Or => left.eval() || right.eval(),
-                    Xor => left.eval() ^ right.eval(),
-                    Impl => !left.eval() || right.eval(),
-                    Leq => left.eval() == right.eval(),
-                }
+            Binary { op, left, right } => match op {
+                And => left.eval() && right.eval(),
+                Or => left.eval() || right.eval(),
+                Xor => left.eval() ^ right.eval(),
+                Impl => !left.eval() || right.eval(),
+                Leq => left.eval() == right.eval(),
             },
         }
     }

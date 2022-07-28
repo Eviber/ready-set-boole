@@ -1,11 +1,11 @@
 // an AST to parse logical expressions in rpn
 
-mod expr_generator;
 mod dot_graph;
+mod expr_generator;
 mod node;
 
-use expr_generator::random_rpn_expr;
 use dot_graph::print_dot;
+use expr_generator::random_rpn_expr;
 use node::ParseError;
 
 fn main() -> Result<(), ParseError> {
@@ -57,7 +57,10 @@ mod tests {
     #[test]
     fn ex03_advanced_tests() {
         assert_eq!(to_bool("1011||="), true);
-        assert_eq!(to_bool("111&!!!1|01=|=11>^0|0!1^11>1|0>1^>10^1|>10^>^"), true);
+        assert_eq!(
+            to_bool("111&!!!1|01=|=11>^0|0!1^11>1|0>1^>10^1|>10^>^"),
+            true
+        );
     }
 
     /*

@@ -10,13 +10,10 @@ pub fn random_rpn_expr() -> String {
         buf[0] as usize
     };
     let mut rpn = String::new();
-    let ops = vec![
-        '&', '|', '^', '>', '=', '!', '0', '1',
-    ];
+    let ops = vec!['&', '|', '^', '>', '=', '!', '0', '1'];
     let vals = vec!['0', '1'];
     let mut needed = 1;
     while needed > 0 {
-        // if the expression is too long, only use operators
         let op = if rpn.is_empty() {
             ops[rng() % (ops.len() - 2)]
         } else {
@@ -25,7 +22,6 @@ pub fn random_rpn_expr() -> String {
                 _ => vals[rng() % vals.len()],
             }
         };
-        // push the operator at the start of the expression
         rpn.insert(0, op);
         needed -= 1;
         needed += match op {

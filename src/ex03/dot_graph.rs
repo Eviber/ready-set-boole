@@ -3,6 +3,7 @@
 
 use crate::node::Node;
 use crate::node::Node::*;
+use std::collections::HashMap;
 
 pub fn print_dot(node: &Node) {
     let mut dot = String::new();
@@ -16,7 +17,7 @@ pub fn print_dot(node: &Node) {
     println!("{}", dot);
 }
 
-fn get_idx(node: &Node, idx: &mut std::collections::HashMap<char, usize>) -> String {
+fn get_idx(node: &Node, idx: &mut HashMap<char, usize>) -> String {
     let mut get_id = |c: char| {
         let id = idx.entry(c).or_insert(0);
         // now convert to a base-52 string
@@ -55,12 +56,12 @@ fn get_idx(node: &Node, idx: &mut std::collections::HashMap<char, usize>) -> Str
     }
 }
 
-fn print_dot_node(dot: &mut String, node: &Node, idx: &mut std::collections::HashMap<char, usize>) -> String {
+fn print_dot_node(dot: &mut String, node: &Node, idx: &mut HashMap<char, usize>) -> String {
     let id = get_idx(node, idx);
     match node {
         Val(v) => {
             dot.push_str(&format!("\t{} [label=\"{}\"];\n", id, *v as u8));
-        },
+        }
         Binary { op, left, right } => {
             dot.push_str(&format!("\t{} [label=\"{}\"];\n", id, op));
             let left_id = print_dot_node(dot, left, idx);
@@ -76,4 +77,3 @@ fn print_dot_node(dot: &mut String, node: &Node, idx: &mut std::collections::Has
     }
     id
 }
-
