@@ -18,8 +18,8 @@ fn multiplier(a: u32, b: u32) -> u32 {
         if multiplier & 1 == 1 {
             result = adder(result, multiplicand);
         }
-        multiplier = multiplier >> 1;
-        multiplicand = multiplicand << 1;
+        multiplier >>= 1;
+        multiplicand <<= 1;
     }
     result
 }
