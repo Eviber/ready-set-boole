@@ -20,7 +20,7 @@ fn main() -> Result<(), ParseError> {
 // tests
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::node::Node;
 
     fn to_bool(s: &str) -> bool {
         s.parse::<Node>().unwrap().into()
@@ -63,33 +63,26 @@ mod tests {
         );
     }
 
-    /*
     #[test]
     fn ex03_error_tests() {
-        unwrap_err!("1&".parse::<Node>());
-        unwrap_err!("1|".parse::<Node>());
-        unwrap_err!("1>".parse::<Node>());
-        unwrap_err!("1=".parse::<Node>());
-        unwrap_err!("1^".parse::<Node>());
-        unwrap_err!("1&1".parse::<Node>());
-        unwrap_err!("1|1".parse::<Node>());
-        unwrap_err!("1=1".parse::<Node>());
-        unwrap_err!("1^1".parse::<Node>());
-        unwrap_err!("1>1".parse::<Node>());
+        use super::ParseError::*;
+        assert_eq!("1&".parse::<Node>().err(), Some(MissingOperand));
+        assert_eq!("1|".parse::<Node>().err(), Some(MissingOperand));
+        assert_eq!("1>".parse::<Node>().err(), Some(MissingOperand));
+        assert_eq!("1=".parse::<Node>().err(), Some(MissingOperand));
+        assert_eq!("1^".parse::<Node>().err(), Some(MissingOperand));
 
-        unwrap_err!("1x|".parse::<Node>());
-        unwrap_err!("1x&".parse::<Node>());
-        unwrap_err!("1x>".parse::<Node>());
-        unwrap_err!("1x=".parse::<Node>());
-        unwrap_err!("1x^".parse::<Node>());
-        unwrap_err!("1x!".parse::<Node>());
+        assert_eq!("00&1".parse::<Node>().err(), Some(UnbalancedExpression));
+        assert_eq!("01|1".parse::<Node>().err(), Some(UnbalancedExpression));
+        assert_eq!("10=1".parse::<Node>().err(), Some(UnbalancedExpression));
+        assert_eq!("11^1".parse::<Node>().err(), Some(UnbalancedExpression));
+        assert_eq!("00>1".parse::<Node>().err(), Some(UnbalancedExpression));
 
-        unwrap_err!("10&1".parse::<Node>());
-        unwrap_err!("10|1".parse::<Node>());
-        unwrap_err!("10>1".parse::<Node>());
-        unwrap_err!("10=1".parse::<Node>());
-        unwrap_err!("10^1".parse::<Node>());
-        unwrap_err!("10!".parse::<Node>());
+        assert_eq!("1x|".parse::<Node>().err(), Some(InvalidCharacter('x')));
+        assert_eq!("1x&".parse::<Node>().err(), Some(InvalidCharacter('x')));
+        assert_eq!("1x>".parse::<Node>().err(), Some(InvalidCharacter('x')));
+        assert_eq!("1x=".parse::<Node>().err(), Some(InvalidCharacter('x')));
+        assert_eq!("1x^".parse::<Node>().err(), Some(InvalidCharacter('x')));
+        assert_eq!("1x!".parse::<Node>().err(), Some(InvalidCharacter('x')));
     }
-    */
 }

@@ -24,7 +24,7 @@ pub enum Node {
     Val(bool),
 }
 
-// error type
+#[derive(PartialEq)]
 pub enum ParseError {
     MissingOperand,
     InvalidCharacter(char),
@@ -99,7 +99,7 @@ impl std::str::FromStr for Node {
                     });
                 }
                 _ => {
-                    let op = c.try_into()?; // InvalidCharacter
+                    let op = c.try_into()?; // BinOp or returns InvalidCharacter
                     let right = stack.pop().ok_or(MissingOperand)?;
                     let left = stack.pop().ok_or(MissingOperand)?;
                     stack.push(Binary {
