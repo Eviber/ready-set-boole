@@ -76,3 +76,4 @@ fn print_dot_node(dot: &mut String, node: &Node, idx: &mut HashMap<char, usize>)
         }
     }
     id
+}
