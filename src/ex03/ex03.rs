@@ -5,15 +5,72 @@ mod expr_generator;
 mod node;
 
 use dot_graph::print_dot;
+use crate::node::Node;
 use expr_generator::random_rpn_expr;
 use node::ParseError;
+use std::env::args;
+
+fn eval_formula(formula: &str) -> bool {
+    formula.parse::<Node>().unwrap().into()
+}
+
+struct Args {
+    expr: String,
+    dot: bool,
+}
+
+fn parse_args() -> Result<Args, String> {
+    let mut args = args();
+    let mut expr = String::new();
+    let mut dot = false;
+    let path = args.next().unwrap_or_else(|| "ex03".to_string());
+    for arg in args {
+        // check if the first character is '-'
+        if let Some(arg) = arg.strip_prefix('-') {
+            for c in arg.chars() {
+                match c {
+                    'd' => dot = true,
+                    'r' => {
+                        if expr.is_empty() {
+                            expr = random_rpn_expr();
+                        } else {
+                            return Err(path);
+                        }
+                    }
+                    _ => return Err(path),
+                }
+            }
+        } else if expr.is_empty() {
+            expr = arg;
+        } else {
+            return Err(path);
+        }
+    }
+    if expr.is_empty() {
+        Err(path)
+    } else {
+        Ok(Args { expr, dot })
+    }
+}
 
 fn main() -> Result<(), ParseError> {
-    let input = random_rpn_expr();
-    eprintln!("Input:\n{}", input);
-    let node = input.parse()?;
-    print_dot(&node);
-    eprintln!("{}", bool::from(node));
+    let (expr, dot) = match parse_args() {
+        Ok(args) => (args.expr, args.dot),
+        Err(path) => {
+            // with an usage, it's best 
+            println!("Usage: {} <formula | -r> [-d]", path);
+            println!("formula: a logical expression in rpn, ex: 101|&");
+            println!("Options:");
+            println!("  -r  use a randomly generated formula");
+            println!("  -d  print the dot graph of the formula and generate an image from it");
+            return Ok(());
+        }
+    };
+    let formula = expr.parse::<Node>()?;
+    if dot {
+        print_dot(&formula);
+    }
+    eprintln!("{}", eval_formula(&expr));
     Ok(())
 }
 
