@@ -4,7 +4,7 @@ mod dot_graph;
 mod expr_generator;
 mod node;
 
-use dot_graph::print_dot;
+use dot_graph::create_graph;
 use crate::node::Node;
 use expr_generator::random_rpn_expr;
 use node::ParseError;
@@ -25,7 +25,6 @@ fn parse_args() -> Result<Args, String> {
     let mut dot = false;
     let path = args.next().unwrap_or_else(|| "ex03".to_string());
     for arg in args {
-        // check if the first character is '-'
         if let Some(arg) = arg.strip_prefix('-') {
             for c in arg.chars() {
                 match c {
@@ -57,7 +56,6 @@ fn main() -> Result<(), ParseError> {
     let (expr, dot) = match parse_args() {
         Ok(args) => (args.expr, args.dot),
         Err(path) => {
-            // with an usage, it's best 
             println!("Usage: {} <formula | -r> [-d]", path);
             println!("formula: a logical expression in rpn, ex: 101|&");
             println!("Options:");
@@ -66,15 +64,15 @@ fn main() -> Result<(), ParseError> {
             return Ok(());
         }
     };
+    println!("Input:\n{}", expr);
     let formula = expr.parse::<Node>()?;
     if dot {
-        print_dot(&formula);
+        create_graph(&formula);
     }
-    eprintln!("{}", eval_formula(&expr));
+    println!("{}", eval_formula(&expr));
     Ok(())
 }
 
-// tests
 #[cfg(test)]
 mod tests {
     use crate::node::Node;

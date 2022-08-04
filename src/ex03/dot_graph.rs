@@ -4,17 +4,25 @@
 use crate::node::Node;
 use crate::node::Node::*;
 use std::collections::HashMap;
+use std::io::Write;
 
-pub fn print_dot(node: &Node) {
+pub fn create_graph(node: &Node) {
+    let mut file = std::fs::File::create("ex03.dot").expect("Unable to create file");
     let mut dot = String::new();
-    let mut idx = std::collections::HashMap::new();
+    let mut idx = HashMap::new();
     dot.push_str("digraph {\n");
     dot.push_str("\tnode [shape=none];\n");
     dot.push_str("\tedge [arrowhead=none];\n");
     dot.push('\n');
     print_dot_node(&mut dot, node, &mut idx);
     dot.push('}');
-    println!("{}", dot);
+    file.write_all(dot.as_bytes()).expect("Unable to write to file");
+    std::process::Command::new("dot")
+        .arg("-Tpng")
+        .arg("-oex03.png")
+        .arg("ex03.dot")
+        .output()
+        .expect("Unable to run dot command");
 }
 
 fn get_idx(node: &Node, idx: &mut HashMap<char, usize>) -> String {
