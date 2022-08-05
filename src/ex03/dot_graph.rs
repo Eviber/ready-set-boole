@@ -32,7 +32,7 @@ pub fn create_graph(node: &Node) {
         }
     }
     match Command::new("dot")
-        .args("-Tpng", "-o", "ex03.png", "ex03.dot")
+        .args(["-Tpng", "-o", "ex03.png", "ex03.dot"])
         .output()
     {
         Ok(_) => println!("Created ex03.png"),
