@@ -4,10 +4,18 @@
 use crate::node::Node;
 use crate::node::Node::*;
 use std::collections::HashMap;
+use std::fs::File;
 use std::io::Write;
+use std::process::Command;
 
 pub fn create_graph(node: &Node) {
-    let mut file = std::fs::File::create("ex03.dot").expect("Unable to create file");
+    let mut file = match File::create("ex03.dot") {
+        Ok(file) => file,
+        Err(e) => {
+            eprintln!("Error creating dot file: {}", e);
+            return;
+        }
+    };
     let mut dot = String::new();
     let mut idx = HashMap::new();
     dot.push_str("digraph {\n");
@@ -16,19 +24,26 @@ pub fn create_graph(node: &Node) {
     dot.push('\n');
     print_dot_node(&mut dot, node, &mut idx);
     dot.push('}');
-    file.write_all(dot.as_bytes()).expect("Unable to write to file");
-    std::process::Command::new("dot")
-        .arg("-Tpng")
-        .arg("-oex03.png")
-        .arg("ex03.dot")
+    match file.write_all(dot.as_bytes()) {
+        Ok(_) => println!("Created dot file ex03.dot"),
+        Err(e) => {
+            eprintln!("Error writing to dot file: {}", e);
+            return;
+        }
+    }
+    match Command::new("dot")
+        .args("-Tpng", "-o", "ex03.png", "ex03.dot")
         .output()
-        .expect("Unable to run dot command");
+    {
+        Ok(_) => println!("Created ex03.png"),
+        Err(e) => eprintln!("Error running dot: {}, image may not be created", e),
+    }
 }
 
 fn get_idx(node: &Node, idx: &mut HashMap<char, usize>) -> String {
     let mut get_id = |c: char| {
         let id = idx.entry(c).or_insert(0);
-        // now convert to a base-52 string
+        // convert to a base-52 string
         let mut s = String::new();
         let mut n = *id;
         if n == 0 {
