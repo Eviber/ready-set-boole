@@ -4,8 +4,8 @@ mod dot_graph;
 mod expr_generator;
 mod node;
 
-use dot_graph::create_graph;
 use crate::node::Node;
+use dot_graph::create_graph;
 use expr_generator::random_rpn_expr;
 use node::ParseError;
 use std::env::args;
