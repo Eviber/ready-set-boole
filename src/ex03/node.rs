@@ -86,6 +86,7 @@ impl fmt::Debug for ParseError {
 
 impl std::str::FromStr for Node {
     type Err = ParseError;
+
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let mut stack = Vec::with_capacity(42);
         for c in s.chars() {
