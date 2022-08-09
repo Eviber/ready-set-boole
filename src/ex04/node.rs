@@ -32,8 +32,8 @@ pub enum Node {
 }
 
 pub struct Tree {
-    root: Node,
-    variables: [Rc<RefCell<Var>>; 26],
+    pub root: Node,
+    pub variables: Vec<Rc<RefCell<Var>>>,
 }
 
 #[derive(PartialEq)]
@@ -100,13 +100,13 @@ impl std::str::FromStr for Tree {
     type Err = ParseError;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let mut stack = Vec::with_capacity(42);
-        let mut variables = [Rc::new(RefCell::new(Var {
-            name: 'A',
-            value: false,
-        })); 26];
-        variables.iter_mut().enumerate().for_each(|(i, v)| {
-            v.borrow_mut().name = (i as u8 + b'A') as char;
-        }); // initialize variables with names A..Z
+        let variables = vec![
+            Rc::new(RefCell::new(Var {
+                name: 'A',
+                value: false
+            }));
+            26
+        ];
 
         for c in s.chars() {
             match c {

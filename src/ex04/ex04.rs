@@ -4,14 +4,14 @@ mod dot_graph;
 mod expr_generator;
 mod node;
 
-use crate::node::Node;
+use crate::node::Tree;
 use dot_graph::create_graph;
 use expr_generator::random_rpn_expr;
 use node::ParseError;
 use std::env::args;
 
 fn eval_formula(formula: &str) -> bool {
-    formula.parse::<Node>().unwrap().into()
+    formula.parse::<Tree>().unwrap().root.into()
 }
 
 struct Args {
@@ -65,9 +65,9 @@ fn main() -> Result<(), ParseError> {
         }
     };
     println!("Input:\n{}", expr);
-    let formula = expr.parse::<Node>()?;
+    let formula = expr.parse::<Tree>()?;
     if dot {
-        create_graph(&formula);
+        create_graph(&formula.root);
     }
     println!("{}", eval_formula(&expr));
     Ok(())
