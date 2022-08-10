@@ -99,14 +99,15 @@ impl fmt::Debug for ParseError {
 impl std::str::FromStr for Tree {
     type Err = ParseError;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let mut stack = Vec::with_capacity(42);
-        let variables = vec![
-            Rc::new(RefCell::new(Var {
-                name: 'A',
-                value: false
-            }));
-            26
-        ];
+        let mut stack = Vec::with_capacity(s.len());
+        let variables: Vec<Rc<RefCell<Var>>> = ('A'..='Z')
+            .map(|c| {
+                Rc::new(RefCell::new(Var {
+                    name: c,
+                    value: false,
+                }))
+            })
+            .collect();
 
         for c in s.chars() {
             match c {
