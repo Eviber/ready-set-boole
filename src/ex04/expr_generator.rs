@@ -10,22 +10,25 @@ pub fn random_rpn_expr() -> String {
         buf[0] as usize
     };
     let mut rpn = String::new();
-    let ops = vec!['&', '|', '^', '>', '=', '!', '0', '1'];
-    let vals = vec!['0', '1'];
+    let ops = vec!['&', '|', '^', '>', '=', '!'];
+    let vals: Vec<char> = (b'A'..=b'A' + (rng() % 26) as u8)
+        .map(|x| x as char)
+        .collect();
     let mut needed = 1;
     while needed > 0 {
         let op = if rpn.is_empty() {
-            ops[rng() % (ops.len() - 2)]
+            ops[rng() % ops.len()]
         } else {
-            match needed {
-                1..=3 => ops[rng() % ops.len()],
-                _ => vals[rng() % vals.len()],
+            if needed > 3 || rng() % 4 == 0 {
+                vals[rng() % vals.len()]
+            } else {
+                ops[rng() % ops.len()]
             }
         };
         rpn.insert(0, op);
         needed -= 1;
         needed += match op {
-            '0' | '1' => 0,
+            'A'..='Z' => 0,
             '!' => 1,
             _ => 2,
         };

@@ -1,5 +1,5 @@
 // prints a dot graph of the AST
-// use dot -Tpng -o ex03.png ex03.dot
+// use dot -Tpng -o ex04.png ex04.dot
 
 use crate::node::Node;
 use crate::node::Node::*;
@@ -9,7 +9,7 @@ use std::io::Write;
 use std::process::Command;
 
 pub fn create_graph(node: &Node) {
-    let mut file = match File::create("ex03.dot") {
+    let mut file = match File::create("ex04.dot") {
         Ok(file) => file,
         Err(e) => {
             eprintln!("Error creating dot file: {}", e);
@@ -25,17 +25,17 @@ pub fn create_graph(node: &Node) {
     print_dot_node(&mut dot, node, &mut idx);
     dot.push('}');
     match file.write_all(dot.as_bytes()) {
-        Ok(_) => println!("Created dot file ex03.dot"),
+        Ok(_) => println!("Created dot file ex04.dot"),
         Err(e) => {
             eprintln!("Error writing to dot file: {}", e);
             return;
         }
     }
     match Command::new("dot")
-        .args(["-Tpng", "-o", "ex03.png", "ex03.dot"])
+        .args(["-Tpng", "-o", "ex04.png", "ex04.dot"])
         .output()
     {
-        Ok(_) => println!("Created ex03.png"),
+        Ok(_) => println!("Created ex04.png"),
         Err(e) => eprintln!("Error running dot: {}, image may not be created", e),
     }
 }
@@ -64,8 +64,7 @@ fn get_idx(node: &Node, idx: &mut HashMap<char, usize>) -> String {
     };
     match node {
         Val(v) => {
-            let v = v.borrow().value;
-            let v = if v { '1' } else { '0' };
+            let v = v.borrow().name;
             let id = get_id(v);
             format!("\"{}_{}\"", v, id)
         }
@@ -84,8 +83,8 @@ fn print_dot_node(dot: &mut String, node: &Node, idx: &mut HashMap<char, usize>)
     let id = get_idx(node, idx);
     match node {
         Val(v) => {
-            let v = v.borrow().value;
-            dot.push_str(&format!("\t{} [label=\"{}\"];\n", id, v as u8));
+            let v = v.borrow().name;
+            dot.push_str(&format!("\t{} [label=\"{}\"];\n", id, v));
         }
         Binary { op, left, right } => {
             dot.push_str(&format!("\t{} [label=\"{}\"];\n", id, op));
