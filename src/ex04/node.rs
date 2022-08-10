@@ -144,8 +144,18 @@ impl std::str::FromStr for Tree {
 }
 
 impl Node {
-    fn eval(self) -> bool {
-        bool::from(self)
+    pub fn eval(&self) -> bool {
+        match self {
+            Binary { op, left, right } => match op {
+                And => left.eval() && right.eval(),
+                Or => left.eval() || right.eval(),
+                Xor => left.eval() ^ right.eval(),
+                Impl => !left.eval() || right.eval(),
+                Leq => left.eval() <= right.eval(),
+            },
+            Not { operand } => !operand.eval(),
+            Val(val) => val.borrow().value,
+        }
     }
 }
 

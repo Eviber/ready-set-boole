@@ -10,13 +10,41 @@ use expr_generator::random_rpn_expr;
 use node::ParseError;
 use std::env::args;
 
-fn eval_formula(formula: &str) -> bool {
-    formula.parse::<Tree>().unwrap().root.into()
-}
-
 struct Args {
     expr: String,
     dot: bool,
+}
+
+fn print_truth_table(formula: &str) {
+    let var_list: Vec<char> = ('A'..='Z').filter(|&c| formula.contains(c)).collect();
+    let tree = match formula.parse::<Tree>() {
+        Ok(t) => t,
+        Err(e) => {
+            eprintln!("Error: {:?}", e);
+            return;
+        }
+    };
+
+    println!(
+        "{}| = |",
+        var_list
+            .iter()
+            .map(|v| format!("| {} ", v))
+            .collect::<String>()
+    );
+    println!("{}|", ("|---").repeat(var_list.len() + 1));
+    for i in 0..(1 << var_list.len()) {
+        let mut row = String::new();
+        for (j, v) in var_list.iter().enumerate() {
+            let j = var_list.len() - j - 1;
+            let bit = (i >> j) & 1;
+            tree.variables[*v as usize - 'A' as usize]
+                .borrow_mut()
+                .value = (i & (1 << j)) != 0;
+            row.push_str(&format!("| {} ", bit));
+        }
+        println!("{}| {} |", row, tree.root.eval() as u8);
+    }
 }
 
 fn parse_args() -> Result<Args, String> {
@@ -69,7 +97,7 @@ fn main() -> Result<(), ParseError> {
     if dot {
         create_graph(&formula.root);
     }
-    println!("{}", eval_formula(&expr));
+    print_truth_table(&expr);
     Ok(())
 }
 
