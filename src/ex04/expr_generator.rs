@@ -18,12 +18,10 @@ pub fn random_rpn_expr() -> String {
     while needed > 0 {
         let op = if rpn.is_empty() {
             ops[rng() % ops.len()]
+        } else if needed > 3 || rng() % 4 == 0 {
+            vals[rng() % vals.len()]
         } else {
-            if needed > 3 || rng() % 4 == 0 {
-                vals[rng() % vals.len()]
-            } else {
-                ops[rng() % ops.len()]
-            }
+            ops[rng() % ops.len()]
         };
         rpn.insert(0, op);
         needed -= 1;
