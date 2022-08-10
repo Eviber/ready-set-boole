@@ -57,7 +57,7 @@ fn main() -> Result<(), ParseError> {
         Ok(args) => (args.expr, args.dot),
         Err(path) => {
             println!("Usage: {} <formula | -r> [-d]", path);
-            println!("formula: a logical expression in rpn, ex: 101|&");
+            println!("formula: a propositional boolean formula in rpn, ex: AB&C|");
             println!("Options:");
             println!("  -r  use a randomly generated formula");
             println!("  -d  print the dot graph of the formula and generate an image from it");
