@@ -31,8 +31,8 @@ fn print_truth_table(formula: &str) {
             .iter()
             .map(|v| format!("| {} ", v))
             .collect::<String>()
-    );
-    println!("{}|", ("|---").repeat(var_list.len() + 1));
+    ); // | A | B | ... | Z | = |
+    println!("{}|", ("|---").repeat(var_list.len() + 1)); // |---|---| ... |---|
     for i in 0..(1 << var_list.len()) {
         let mut row = String::new();
         for (j, v) in var_list.iter().enumerate() {
@@ -40,7 +40,7 @@ fn print_truth_table(formula: &str) {
             let bit = (i >> j) & 1;
             tree.variables[*v as usize - 'A' as usize]
                 .borrow_mut()
-                .value = (i & (1 << j)) != 0;
+                .value = bit != 0;
             row.push_str(&format!("| {} ", bit));
         }
         println!("{}| {} |", row, tree.root.eval() as u8);
@@ -51,7 +51,7 @@ fn parse_args() -> Result<Args, String> {
     let mut args = args();
     let mut expr = String::new();
     let mut dot = false;
-    let path = args.next().unwrap_or_else(|| "ex03".to_string());
+    let path = args.next().unwrap_or_else(|| "ex04".to_string());
     for arg in args {
         if let Some(arg) = arg.strip_prefix('-') {
             for c in arg.chars() {

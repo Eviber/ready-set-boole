@@ -151,7 +151,7 @@ impl Node {
                 Or => left.eval() || right.eval(),
                 Xor => left.eval() ^ right.eval(),
                 Impl => !left.eval() || right.eval(),
-                Leq => left.eval() <= right.eval(),
+                Leq => left.eval() == right.eval(),
             },
             Not { operand } => !operand.eval(),
             Val(val) => val.borrow().value,
