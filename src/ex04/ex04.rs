@@ -17,40 +17,16 @@ struct Args {
 }
 
 fn print_truth_table(formula: &str) {
-    let tree = match formula.parse::<Tree>() {
-        Ok(t) => t,
-        Err(e) => {
-            eprintln!("Error: {:?}", e);
-            return;
-        }
-    };
-    let var_list: Vec<char> = ('A'..='Z').filter(|&c| formula.contains(c)).collect();
-
-    println!(
-        "{}| = |",
-        var_list
-            .iter()
-            .map(|v| format!("| {} ", v))
-            .collect::<String>()
-    ); // | A | B | ... | Z | = |
-    println!("{}|", ("|---").repeat(var_list.len() + 1)); // |---|---| ... |---|
-    for i in 0..(1u32 << var_list.len()) {
-        let mut row = String::new();
-        for (j, v) in var_list.iter().enumerate() {
-            let j = var_list.len() - j - 1;
-            let bit = (i >> j) & 1;
-            tree.variables[*v as usize - 'A' as usize]
-                .borrow_mut()
-                .value = bit != 0;
-            row.push_str(&format!("| {} ", bit));
-        }
-        // println!("{}| {} |", row, tree.root.eval() as u8);
-        // same with a colored separator
-        println!("{}| {} |", row, tree.root.eval() as u8);
+    match print_truth_table_color(formula, false) {
+        Ok(_) => (),
+        Err(e) => eprintln!("{:?}", e),
     }
 }
 
-fn color_bit(bit: u32) -> String {
+fn color_bit(bit: u32, color: bool) -> String {
+    if !color {
+        return format!("{}", bit);
+    }
     match bit {
         0 => "\x1b[31m0\x1b[0m".to_string(),
         1 => "\x1b[32m1\x1b[0m".to_string(),
@@ -62,45 +38,43 @@ fn blue(s: &str) -> String {
     format!("\x1b[1;34m{}\x1b[0m", s)
 }
 
-fn print_truth_table_color(formula: &str) {
-    let tree = match formula.parse::<Tree>() {
-        Ok(t) => t,
-        Err(e) => {
-            eprintln!("Error: {:?}", e);
-            return;
-        }
-    };
+fn print_truth_table_color(formula: &str, color: bool) -> Result<(), ParseError> {
+    use std::io::{BufWriter, Write};
+    let tree = formula.parse::<Tree>()?;
     let var_list: Vec<char> = ('A'..='Z').filter(|&c| formula.contains(c)).collect();
-    let bar = blue("|");
+    let out = std::io::stdout();
+    let mut buf = BufWriter::new(out.lock());
+    let bar = if color { blue("|") } else { "|".to_string() };
 
-    println!(
+    writeln!(
+        buf,
         "{}{} = |",
         var_list
             .iter()
             .map(|v| format!("| {} ", v))
             .collect::<String>(),
         bar
-    ); // | A | B | ... | Z | = |
-    println!("{}{}---|", ("|---").repeat(var_list.len()), bar); // |---|---| ... |---|
+    )
+    .unwrap(); // | A | B | ... | Z | = |
+    writeln!(buf, "{}{}---|", ("|---").repeat(var_list.len()), bar).unwrap(); // |---|---| ... |---|
     for i in 0..(1u32 << var_list.len()) {
-        let mut row = String::new();
         for (j, v) in var_list.iter().enumerate() {
             let j = var_list.len() - j - 1;
             let bit = (i >> j) & 1;
             tree.variables[*v as usize - 'A' as usize]
                 .borrow_mut()
                 .value = bit != 0;
-            // color the cell
-            row.push_str(&format!("| {} ", color_bit(bit)));
+            write!(buf, "| {} ", color_bit(bit, color)).unwrap();
         }
-        // println!("{}| {} |", row, tree.root.eval() as u8);
-        // same with a colored separator
-        println!(
-            "{}\x1b[1;34m|\x1b[0m {} |",
-            row,
-            color_bit(tree.root.eval() as u32)
-        );
+        writeln!(
+            buf,
+            "{} {} |",
+            bar,
+            color_bit(tree.root.eval() as u32, color)
+        )
+        .unwrap();
     }
+    Ok(())
 }
 
 fn parse_args() -> Result<Args, String> {
@@ -158,7 +132,7 @@ fn main() -> Result<(), ParseError> {
         create_graph(&formula.root);
     }
     if color {
-        print_truth_table_color(&expr);
+        print_truth_table_color(&expr, color)?;
     } else {
         print_truth_table(&expr);
     }
