@@ -1,5 +1,5 @@
 // prints a dot graph of the AST
-// use dot -Tpng -o ex04.png ex04.dot
+// use dot -Tsvg -o ex04.svg ex04.dot
 
 use crate::node::Node;
 use crate::node::Node::*;
@@ -32,10 +32,10 @@ pub fn create_graph(node: &Node) {
         }
     }
     match Command::new("dot")
-        .args(["-Tpng", "-o", "ex04.png", "ex04.dot"])
+        .args(["-Tsvg", "-o", "ex04.svg", "ex04.dot"])
         .output()
     {
-        Ok(_) => println!("Created ex04.png"),
+        Ok(_) => println!("Created ex04.svg"),
         Err(e) => eprintln!("Error running dot: {}, image may not be created", e),
     }
 }
