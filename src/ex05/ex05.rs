@@ -62,11 +62,11 @@ fn main() -> Result<(), ParseError> {
         }
     };
     println!("Input:\n{}", expr);
-    let tree = expr.parse::<Tree>()?;
+    let mut tree = expr.parse::<Tree>()?;
     if dot {
         create_graph(&tree.root, "ex05_in");
     }
-    // TODO: apply NNF to the tree
+    tree.root = *(tree.root.nnf());
     if dot {
         create_graph(&tree.root, "ex05_out");
     }
