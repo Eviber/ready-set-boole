@@ -15,6 +15,13 @@ struct Args {
     dot: bool,
 }
 
+fn negation_normal_form(formula: &str) -> String {
+    match formula.parse::<Tree>() {
+        Ok(tree) => tree.root.nnf().to_string(),
+        Err(e) => format!("Error: {:?}", e),
+    }
+}
+
 fn parse_args() -> Result<Args, String> {
     let mut args = args();
     let mut expr = String::new();
@@ -62,13 +69,11 @@ fn main() -> Result<(), ParseError> {
         }
     };
     println!("Input:\n{}", expr);
-    let mut tree = expr.parse::<Tree>()?;
+    let tree = expr.parse::<Tree>()?.root;
     if dot {
-        create_graph(&tree.root, "ex05_in");
+        create_graph(&tree, "ex05_in");
+        create_graph(&(tree.nnf()), "ex05_out");
     }
-    tree.root = *(tree.root.nnf());
-    if dot {
-        create_graph(&tree.root, "ex05_out");
-    }
+    println!("{}", negation_normal_form(&expr));
     Ok(())
 }

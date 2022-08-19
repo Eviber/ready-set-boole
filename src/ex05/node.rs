@@ -80,9 +80,9 @@ impl fmt::Display for BinOp {
 impl fmt::Display for Node {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Binary { op, left, right } => write!(f, "({} {} {})", left, op, right),
-            Not { operand } => write!(f, "!{}", operand),
-            Val(val) => write!(f, "{}", val.borrow().value as u8),
+            Binary { op, left, right } => write!(f, "{}{}{}", left, right, op),
+            Not { operand } => write!(f, "{}!", operand),
+            Val(val) => write!(f, "{}", val.borrow().name),
         }
     }
 }
