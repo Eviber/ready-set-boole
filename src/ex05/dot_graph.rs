@@ -69,7 +69,7 @@ fn get_idx(node: &Node, idx: &mut HashMap<char, usize>) -> String {
     };
     match node {
         Val(v) => {
-            let v = v.borrow().name;
+            let v = v.get().name;
             let id = get_id(v);
             format!("\"{}_{}\"", v, id)
         }
@@ -88,7 +88,7 @@ fn print_dot_node(dot: &mut String, node: &Node, idx: &mut HashMap<char, usize>)
     let id = get_idx(node, idx);
     match node {
         Val(v) => {
-            let v = v.borrow().name;
+            let v = v.get().name;
             dot.push_str(&format!("\t{} [label=\"{}\"];\n", id, v));
         }
         Binary { op, left, right } => {

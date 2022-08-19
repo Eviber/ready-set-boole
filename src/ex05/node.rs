@@ -1,4 +1,4 @@
-use std::cell::RefCell;
+use std::cell::Cell;
 use std::fmt;
 use std::rc::Rc;
 use BinOp::*;
@@ -14,6 +14,7 @@ pub enum BinOp {
     Leq,
 }
 
+#[derive(Clone, Copy)]
 pub struct Var {
     pub name: char,
     pub value: bool,
@@ -29,12 +30,12 @@ pub enum Node {
     Not {
         operand: Box<Node>,
     },
-    Val(Rc<RefCell<Var>>),
+    Val(Rc<Cell<Var>>),
 }
 
 pub struct Tree {
     pub root: Node,
-    pub variables: Vec<Rc<RefCell<Var>>>,
+    pub variables: Vec<Rc<Cell<Var>>>,
 }
 
 #[derive(PartialEq)]
@@ -82,7 +83,7 @@ impl fmt::Display for Node {
         match self {
             Binary { op, left, right } => write!(f, "{}{}{}", left, right, op),
             Not { operand } => write!(f, "{}!", operand),
-            Val(val) => write!(f, "{}", val.borrow().name),
+            Val(val) => write!(f, "{}", val.get().name),
         }
     }
 }
@@ -101,9 +102,9 @@ impl std::str::FromStr for Tree {
     type Err = ParseError;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let mut stack = Vec::with_capacity(s.len());
-        let variables: Vec<Rc<RefCell<Var>>> = ('A'..='Z')
+        let variables: Vec<Rc<Cell<Var>>> = ('A'..='Z')
             .map(|c| {
-                Rc::new(RefCell::new(Var {
+                Rc::new(Cell::new(Var {
                     name: c,
                     value: false,
                 }))
@@ -144,81 +145,70 @@ impl std::str::FromStr for Tree {
     }
 }
 
+// TODO: implement binary operations for node
+impl std::ops::BitOr for Box<Node> {
+    type Output = Box<Node>;
+    fn bitor(self, other: Box<Node>) -> Box<Node> {
+        Box::new(Binary {
+            op: Or,
+            left: self,
+            right: other,
+        })
+    }
+}
+
+impl std::ops::BitAnd for Box<Node> {
+    type Output = Box<Node>;
+    fn bitand(self, other: Box<Node>) -> Box<Node> {
+        Box::new(Binary {
+            op: And,
+            left: self,
+            right: other,
+        })
+    }
+}
+
+// not operator
+impl std::ops::Not for Box<Node> {
+    type Output = Box<Node>;
+    fn not(self) -> Box<Node> {
+        Box::new(Not { operand: self })
+    }
+}
+
+impl std::ops::Not for Node {
+    type Output = Box<Node>;
+    fn not(self) -> Box<Node> {
+        Box::new(Not {
+            operand: Box::new(self),
+        })
+    }
+}
+
 impl Node {
     pub fn nnf(self) -> Box<Node> {
         match self {
             Val(v) => Box::new(Val(v)),
             Binary { op, left, right } => match op {
                 // Xor -> (!A & B ) | (A & !B)
-                Xor => Binary {
-                    op: Or,
-                    left: Box::new(Binary {
-                        op: And,
-                        left: Box::new(Not {
-                            operand: left.clone(),
-                        }),
-                        right: right.clone(),
-                    }),
-                    right: Box::new(Binary {
-                        op: And,
-                        left,
-                        right: Box::new(Not { operand: right }),
-                    }),
-                }
-                .nnf(),
+                Xor => ((left.clone() & !right.clone()) | (!left & right)).nnf(),
                 // Impl -> !A | B
-                Impl => Binary {
-                    op: Or,
-                    left: Box::new(Not { operand: left }),
-                    right,
-                }
-                .nnf(),
+                Impl => (!left | right).nnf(),
                 // Leq == (A & B) | (!A & !B)
-                Leq => Binary {
-                    op: Or,
-                    left: Box::new(Binary {
-                        op: And,
-                        left: left.clone(),
-                        right: right.clone(),
-                    }),
-                    right: Box::new(Binary {
-                        op: And,
-                        left: Box::new(Not { operand: left }),
-                        right: Box::new(Not { operand: right }),
-                    }),
-                }
-                .nnf(),
-                _ => Box::new(Binary {
-                    op,
-                    left: left.nnf(),
-                    right: right.nnf(),
-                }),
+                Leq => ((left.clone() & right.clone()) | (!left & !right)).nnf(),
+                And => left.nnf() & right.nnf(),
+                Or => left.nnf() | right.nnf(),
             },
             Not { operand } => match *operand {
-                Val(v) => Box::new(Not {
-                    operand: Box::new(Val(v)),
-                }),
+                Val(v) => !Val(v),
                 Not { operand } => (*operand).nnf(),
                 Binary { op, left, right } => match op {
                     // !(A & B) -> !A | !B
-                    And => Binary {
-                        op: Or,
-                        left: Box::new(Not { operand: left }),
-                        right: Box::new(Not { operand: right }),
-                    }
-                    .nnf(),
+                    And => (!left | !right).nnf(),
                     // !(A | B) -> !A & !B
-                    Or => Binary {
-                        op: And,
-                        left: Box::new(Not { operand: left }),
-                        right: Box::new(Not { operand: right }),
-                    }
-                    .nnf(),
+                    Or => (!left & !right).nnf(),
                     // else, first convert to & or |, then call nnf on the result
-                    _ => Not {
-                        operand: Binary { op, left, right }.nnf(),
-                    }
-                    .nnf(),
+                    _ => !(Binary { op, left, right }.nnf()).nnf(),
                 },
             },
         }
