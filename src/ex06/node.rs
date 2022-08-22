@@ -204,6 +204,7 @@ impl Node {
                         right: lr,
                     } = *left
                     {
+                        // (A & B) | C -> (A | C) & (B | C)
                         ((ll | right.clone()) & (lr | right)).cnf()
                     } else if let Binary {
                         op: And,
@@ -211,8 +212,10 @@ impl Node {
                         right: rr,
                     } = *right
                     {
+                        // A & (B | C) -> (A | B) & (A | C)
                         ((left.clone() | rl) & (left | rr)).cnf()
                     } else {
+                        // if neither left nor right is an And, just continue the recursion
                         left.cnf() | right.cnf()
                     }
                 }
