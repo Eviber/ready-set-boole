@@ -186,29 +186,47 @@ impl std::ops::Not for Node {
 }
 
 impl Node {
-    pub fn nnf(self) -> Box<Node> {
+    pub fn cnf(self) -> Box<Node> {
         match self {
             Val(v) => Box::new(Val(v)),
             Binary { op, left, right } => match op {
                 // Xor -> (!A & B ) | (A & !B)
-                Xor => ((left.clone() & !right.clone()) | (!left & right)).nnf(),
+                Xor => ((left.clone() & !right.clone()) | (!left & right)).cnf(),
                 // Impl -> !A | B
-                Impl => (!left | right).nnf(),
+                Impl => (!left | right).cnf(),
                 // Leq == (A & B) | (!A & !B)
-                Leq => ((left.clone() & right.clone()) | (!left & !right)).nnf(),
-                And => left.nnf() & right.nnf(),
-                Or => left.nnf() | right.nnf(),
+                Leq => ((left.clone() & right.clone()) | (!left & !right)).cnf(),
+                And => left.cnf() & right.cnf(),
+                Or => {
+                    if let Binary {
+                        op: And,
+                        left: ll,
+                        right: lr,
+                    } = *left
+                    {
+                        ((ll | right.clone()) & (lr | right)).cnf()
+                    } else if let Binary {
+                        op: And,
+                        left: rl,
+                        right: rr,
+                    } = *right
+                    {
+                        ((left.clone() | rl) & (left | rr)).cnf()
+                    } else {
+                        left.cnf() | right.cnf()
+                    }
+                }
             },
             Not { operand } => match *operand {
                 Val(v) => !Val(v),
-                Not { operand } => (*operand).nnf(),
+                Not { operand } => (*operand).cnf(),
                 Binary { op, left, right } => match op {
                     // !(A & B) -> !A | !B
-                    And => (!left | !right).nnf(),
+                    And => (!left | !right).cnf(),
                     // !(A | B) -> !A & !B
-                    Or => (!left & !right).nnf(),
-                    // else, first convert to & or |, then call nnf on the result
-                    _ => (!Binary { op, left, right }.nnf()).nnf(),
+                    Or => (!left & !right).cnf(),
+                    // else, first convert to & or |, then call cnf on the result
+                    _ => (!Binary { op, left, right }.cnf()).cnf(),
                 },
             },
         }

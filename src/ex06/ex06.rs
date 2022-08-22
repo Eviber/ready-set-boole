@@ -15,9 +15,9 @@ struct Args {
     dot: bool,
 }
 
-fn negation_normal_form(formula: &str) -> String {
+fn conjunctive_normal_form(formula: &str) -> String {
     match formula.parse::<Tree>() {
-        Ok(tree) => tree.root.nnf().to_string(),
+        Ok(tree) => tree.root.cnf().to_string(),
         Err(e) => format!("Error: {:?}", e),
     }
 }
@@ -74,6 +74,6 @@ fn main() -> Result<(), ParseError> {
         create_graph(&tree, "ex06_in");
         create_graph(&(tree.cnf()), "ex06_out");
     }
-    println!("{}", negation_normal_form(&expr));
+    println!("{}", conjunctive_normal_form(&expr));
     Ok(())
 }
