@@ -208,7 +208,7 @@ impl Node {
                     // !(A | B) -> !A & !B
                     Or => (!left & !right).nnf(),
                     // else, first convert to & or |, then call nnf on the result
-                    _ => !(Binary { op, left, right }.nnf()).nnf(),
+                    _ => (!Binary { op, left, right }.nnf()).nnf(),
                 },
             },
         }
