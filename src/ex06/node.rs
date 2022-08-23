@@ -168,6 +168,25 @@ impl std::ops::BitAnd for Box<Node> {
     }
 }
 
+impl std::ops::BitXor for Box<Node> {
+    type Output = Box<Node>;
+    fn bitxor(self, other: Box<Node>) -> Box<Node> {
+        Box::new(Binary {
+            op: Xor,
+            left: self,
+            right: other,
+        })
+    }
+}
+
+fn leq(left: Box<Node>, right: Box<Node>) -> Box<Node> {
+    Box::new(Binary {
+        op: Leq,
+        left,
+        right,
+    })
+}
+
 // not operator
 impl std::ops::Not for Box<Node> {
     type Output = Box<Node>;
@@ -231,6 +250,10 @@ impl Node {
                     And => (!left | !right).cnf(),
                     // !(A | B) -> !A & !B
                     Or => (!left & !right).cnf(),
+                    // !(A = B) -> A ^ B
+                    Leq => (left ^ right).cnf(),
+                    // !(A ^ B) -> A = B
+                    Xor => leq(left, right).cnf(),
                     // else, first convert to & or |, then call cnf on the result
                     _ => (!Binary { op, left, right }.cnf()).cnf(),
                 },
