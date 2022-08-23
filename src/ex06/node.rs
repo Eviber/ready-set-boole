@@ -198,6 +198,9 @@ impl Node {
                 Leq => ((left.clone() | !right.clone()) & (!left | right)).cnf(),
                 And => left.cnf() & right.cnf(),
                 Or => {
+                    // recurse first to bring up any ANDs
+                    let left = left.cnf();
+                    let right = right.cnf();
                     if let Binary {
                         op: And,
                         left: ll,
@@ -215,8 +218,8 @@ impl Node {
                         // A & (B | C) -> (A | B) & (A | C)
                         ((left.clone() | rl) & (left | rr)).cnf()
                     } else {
-                        // if neither left nor right is an And, just continue the recursion
-                        left.cnf() | right.cnf()
+                        // if neither left nor right is an And, we're done
+                        left | right
                     }
                 }
             },
