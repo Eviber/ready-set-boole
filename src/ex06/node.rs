@@ -190,12 +190,12 @@ impl Node {
         match self {
             Val(v) => Box::new(Val(v)),
             Binary { op, left, right } => match op {
-                // Xor -> (!A & B ) | (A & !B)
-                Xor => ((left.clone() & !right.clone()) | (!left & right)).cnf(),
+                // Xor -> (A | B) & (!A | !B)
+                Xor => ((left.clone() | right.clone()) & (!left | !right)).cnf(),
                 // Impl -> !A | B
                 Impl => (!left | right).cnf(),
-                // Leq == (A & B) | (!A & !B)
-                Leq => ((left.clone() & right.clone()) | (!left & !right)).cnf(),
+                // Leq == (A | !B) & (!A | B)
+                Leq => ((left.clone() | !right.clone()) & (!left | right)).cnf(),
                 And => left.cnf() & right.cnf(),
                 Or => {
                     if let Binary {
