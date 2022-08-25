@@ -73,7 +73,7 @@ fn get_idx(node: &Node, idx: &mut HashMap<char, usize>) -> String {
             let id = get_id(v);
             format!("\"{}_{}\"", v, id)
         }
-        Not { .. } => {
+        Not(..) => {
             let id = get_id('!');
             format!("\"!_{}\"", id)
         }
@@ -98,7 +98,7 @@ fn print_dot_node(dot: &mut String, node: &Node, idx: &mut HashMap<char, usize>)
             let right_id = print_dot_node(dot, right, idx);
             dot.push_str(&format!("\t{} -> {};\n", id, right_id));
         }
-        Not { operand } => {
+        Not(operand) => {
             dot.push_str(&format!("\t{} [label=\"!\"];\n", id));
             let operand_id = print_dot_node(dot, operand, idx);
             dot.push_str(&format!("\t{} -> {};\n", id, operand_id));

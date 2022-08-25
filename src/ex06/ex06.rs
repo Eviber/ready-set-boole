@@ -115,7 +115,7 @@ mod tests {
         fn eval(&self) -> bool {
             match self {
                 Val(v) => v.get().value,
-                Not { operand: n } => !n.eval(),
+                Not(n) => !n.eval(),
                 Binary { op, left, right } => match op {
                     And => left.eval() && right.eval(),
                     Or => left.eval() || right.eval(),

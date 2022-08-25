@@ -39,9 +39,7 @@ fn random_node(vals: &[Rc<Cell<Var>>], maxdepth: u32) -> Node {
     };
     match n {
         0 => Val(vals[rng() % vals.len()].clone()),
-        1 => Not {
-            operand: Box::new(random_node(vals, maxdepth - 1)),
-        },
+        1 => Not(Box::new(random_node(vals, maxdepth - 1))),
         n => Binary {
             op: match n {
                 2 => And,

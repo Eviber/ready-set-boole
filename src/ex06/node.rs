@@ -27,9 +27,7 @@ pub enum Node {
         left: Box<Node>,
         right: Box<Node>,
     },
-    Not {
-        operand: Box<Node>,
-    },
+    Not(Box<Node>),
     Val(Rc<Cell<Var>>),
 }
 
@@ -82,7 +80,7 @@ impl fmt::Display for Node {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Binary { op, left, right } => write!(f, "{}{}{}", left, right, op),
-            Not { operand } => write!(f, "{}!", operand),
+            Not(operand) => write!(f, "{}!", operand),
             Val(val) => write!(f, "{}", val.get().name),
         }
     }
@@ -118,9 +116,7 @@ impl std::str::FromStr for Tree {
                 }
                 '!' => {
                     let operand = stack.pop().ok_or(MissingOperand)?;
-                    stack.push(Not {
-                        operand: Box::new(operand),
-                    });
+                    stack.push(Not(Box::new(operand)));
                 }
                 _ => {
                     let op = c.try_into()?; // BinOp or returns InvalidCharacter
@@ -191,16 +187,14 @@ fn leq(left: Box<Node>, right: Box<Node>) -> Box<Node> {
 impl std::ops::Not for Box<Node> {
     type Output = Box<Node>;
     fn not(self) -> Box<Node> {
-        Box::new(Not { operand: self })
+        Box::new(Not(self))
     }
 }
 
 impl std::ops::Not for Node {
     type Output = Box<Node>;
     fn not(self) -> Box<Node> {
-        Box::new(Not {
-            operand: Box::new(self),
-        })
+        Box::new(Not(Box::new(self)))
     }
 }
 
@@ -242,9 +236,9 @@ impl Node {
                     }
                 }
             },
-            Not { operand } => match *operand {
+            Not(operand) => match *operand {
                 Val(v) => !Val(v),
-                Not { operand } => (*operand).cnf(),
+                Not(operand) => (*operand).cnf(),
                 Binary { op, left, right } => match op {
                     // !(A & B) -> !A | !B
                     And => (!left | !right).cnf(),
