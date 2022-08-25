@@ -77,3 +77,74 @@ fn main() -> Result<(), ParseError> {
     println!("{}", conjunctive_normal_form(&expr));
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::node::BinOp::*;
+    use crate::node::Node::*;
+    use crate::node::*;
+
+    fn test_cnf(formula: &str, expected: &str) {
+        let cnf = conjunctive_normal_form(formula);
+        assert_eq!(cnf, expected, "formula: {}", formula);
+    }
+
+    fn get_table(input: &str) -> Vec<bool> {
+        let tree = input.parse::<Tree>().expect("input is valid");
+        let var_list: Vec<char> = ('A'..='Z').filter(|&c| input.contains(c)).collect();
+        let mut res = Vec::with_capacity(1 << var_list.len());
+        for i in 0..(1 << var_list.len()) {
+            for (j, v) in var_list.iter().enumerate() {
+                let j = var_list.len() - j - 1;
+                let bit = (i >> j) & 1;
+                tree.set_var(*v, bit == 1);
+            }
+            res.push(tree.root.eval());
+        }
+        res
+    }
+
+    impl Tree {
+        fn set_var(&self, name: char, value: bool) {
+            self.variables[name as usize - 'A' as usize].set(Var { name, value })
+        }
+    }
+
+    impl Node {
+        fn eval(&self) -> bool {
+            match self {
+                Val(v) => v.get().value,
+                Not { operand: n } => !n.eval(),
+                Binary { op, left, right } => match op {
+                    And => left.eval() && right.eval(),
+                    Or => left.eval() || right.eval(),
+                    Impl => !left.eval() || right.eval(),
+                    Leq => left.eval() == right.eval(),
+                    Xor => left.eval() ^ right.eval(),
+                },
+            }
+        }
+    }
+
+    #[test]
+    fn ex06_basic_test() {
+        test_cnf("AB&", "AB&");
+        test_cnf("AB&!", "A!B!|");
+        test_cnf("AB|!", "A!B!&");
+        test_cnf("AB|C&", "AB|C&");
+        // test_cnf("AB|C|D|", "ABCD|||");
+        // test_cnf("AB&C&D&", "ABCD&&&");
+        test_cnf("AB&!C!|", "A!B!|C!|");
+        test_cnf("AB|!C!&", "A!B!&C!&");
+    }
+
+    #[test]
+    fn ex06_random_test() {
+        for _ in 0..100 {
+            let expr = random_rpn_expr(3);
+            let cnf = conjunctive_normal_form(&expr);
+            assert_eq!(get_table(&cnf), get_table(&expr), "{}", expr);
+        }
+    }
+}
