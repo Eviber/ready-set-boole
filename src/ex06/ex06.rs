@@ -35,7 +35,7 @@ fn parse_args() -> Result<Args, String> {
                     'd' => dot = true,
                     'r' => {
                         if expr.is_empty() {
-                            expr = random_rpn_expr();
+                            expr = random_rpn_expr(3);
                         } else {
                             return Err(path);
                         }
