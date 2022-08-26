@@ -12,8 +12,9 @@ fn rng() -> usize {
     buf[0] as usize
 }
 
-pub fn random_rpn_expr(maxdepth: u32) -> String {
-    let vals = (b'A'..=b'A' + (rng() % 26) as u8)
+pub fn random_rpn_expr(maxdepth: u32, maxvars: usize) -> String {
+    assert!(maxdepth > 0, "maxdepth must be > 0");
+    let vals = (b'A'..=b'A' + (rng() % maxvars) as u8)
         .map(|x| x as char)
         .map(|x| {
             Rc::new(Cell::new(Variable {

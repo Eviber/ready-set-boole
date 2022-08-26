@@ -35,7 +35,7 @@ fn parse_args() -> Result<Args, String> {
                     'd' => dot = true,
                     'r' => {
                         if expr.is_empty() {
-                            expr = random_rpn_expr(3);
+                            expr = random_rpn_expr(3, 5);
                         } else {
                             return Err(path);
                         }
@@ -143,7 +143,7 @@ mod tests {
     #[test]
     fn ex06_random_test() {
         for _ in 0..100 {
-            let expr = random_rpn_expr(3);
+            let expr = random_rpn_expr(3, 5);
             let cnf = conjunctive_normal_form(&expr);
             assert_eq!(get_table(&cnf), get_table(&expr), "{}", expr);
         }
