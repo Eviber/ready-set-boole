@@ -258,4 +258,136 @@ impl Node {
             },
         }
     }
+
+    fn equals(&self, other: &Node) -> bool {
+        match (self, other) {
+            (Const(a), Const(b)) => a == b,
+            (Var(a), Var(b)) => a.get().name == b.get().name,
+            (
+                Binary { op, left, right },
+                Binary {
+                    op: o,
+                    left: l,
+                    right: r,
+                },
+            ) => {
+                op == o
+                    && ((left.equals(l) && right.equals(r)) || (left.equals(r) && right.equals(l)))
+            }
+            (Not(a), Not(b)) => a.equals(b),
+            _ => false,
+        }
+    }
+
+    pub fn simplify(self) -> Box<Node> {
+        match self {
+            Const(val) => Box::new(Const(val)),
+            Var(v) => Box::new(Var(v)),
+            Not(n) => match *n {
+                Const(val) => Box::new(Const(!val)),
+                Var(v) => !Var(v),
+                Not(n) => (*n).simplify(),
+                Binary { op, left, right } => match op {
+                    And => (!left | !right).simplify(),
+                    Or => (!left & !right).simplify(),
+                    Leq => (left ^ right).simplify(),
+                    Xor => leq(left, right).simplify(),
+                    Impl => (!left | right).simplify(),
+                },
+            },
+            Binary { op, left, right } => {
+                let left = left.simplify();
+                let right = right.simplify();
+                match op {
+                    And => Box::new(match (*left, *right) {
+                        (Const(false), _) => Const(false),
+                        (_, Const(false)) => Const(false),
+                        (Const(true), right) => right,
+                        (left, Const(true)) => left,
+                        (left, right) => {
+                            if left.equals(&right) {
+                                left
+                            } else {
+                                Binary {
+                                    op,
+                                    left: Box::new(left),
+                                    right: Box::new(right),
+                                }
+                            }
+                        }
+                    }),
+                    Or => Box::new(match (*left, *right) {
+                        (Const(true), _) => Const(true),
+                        (_, Const(true)) => Const(true),
+                        (Const(false), right) => right,
+                        (left, Const(false)) => left,
+                        (left, right) => {
+                            if left.equals(&right) {
+                                left
+                            } else {
+                                Binary {
+                                    op,
+                                    left: Box::new(left),
+                                    right: Box::new(right),
+                                }
+                            }
+                        }
+                    }),
+                    Xor => Box::new(match (*left, *right) {
+                        (Const(a), Const(b)) => Const(a ^ b),
+                        (Const(false), right) => right,
+                        (left, Const(false)) => left,
+                        (Const(true), right) => *(!right),
+                        (left, Const(true)) => *(!left),
+                        (left, right) => {
+                            if left.equals(&right) {
+                                Const(false)
+                            } else {
+                                Binary {
+                                    op,
+                                    left: Box::new(left),
+                                    right: Box::new(right),
+                                }
+                            }
+                        }
+                    }),
+                    Leq => Box::new(match (*left, *right) {
+                        (Const(a), Const(b)) => Const(a == b),
+                        (Const(false), right) => *(!right),
+                        (left, Const(false)) => *(!left),
+                        (Const(true), right) => right,
+                        (left, Const(true)) => left,
+                        (left, right) => {
+                            if left.equals(&right) {
+                                Const(true)
+                            } else {
+                                Binary {
+                                    op,
+                                    left: Box::new(left),
+                                    right: Box::new(right),
+                                }
+                            }
+                        }
+                    }),
+                    Impl => Box::new(match (*left, *right) {
+                        (Const(false), _) => Const(true),
+                        (_, Const(true)) => Const(true),
+                        (Const(true), right) => right,
+                        (left, Const(false)) => *(!left),
+                        (left, right) => {
+                            if left.equals(&right) {
+                                Const(true)
+                            } else {
+                                Binary {
+                                    op,
+                                    left: Box::new(left),
+                                    right: Box::new(right),
+                                }
+                            }
+                        }
+                    }),
+                }
+            }
+        }
+    }
 }

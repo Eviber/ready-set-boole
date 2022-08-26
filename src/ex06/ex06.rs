@@ -17,7 +17,7 @@ struct Args {
 
 fn conjunctive_normal_form(formula: &str) -> String {
     match formula.parse::<Tree>() {
-        Ok(tree) => tree.root.cnf().to_string(),
+        Ok(tree) => tree.root.simplify().cnf().simplify().to_string(),
         Err(e) => format!("Error: {:?}", e),
     }
 }
@@ -72,7 +72,7 @@ fn main() -> Result<(), ParseError> {
     let tree = expr.parse::<Tree>()?.root;
     if dot {
         create_graph(&tree, "ex06_in");
-        create_graph(&(tree.cnf()), "ex06_out");
+        create_graph(&(tree.simplify().cnf().simplify()), "ex06_out");
     }
     println!("{}", conjunctive_normal_form(&expr));
     Ok(())
