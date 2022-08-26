@@ -68,7 +68,11 @@ fn get_idx(node: &Node, idx: &mut HashMap<char, usize>) -> String {
         s
     };
     match node {
-        Val(v) => {
+        Const(c) => {
+            let id = get_id('c');
+            format!("\"{}_{}\"", (*c as u8).to_string(), id)
+        }
+        Var(v) => {
             let v = v.get().name;
             let id = get_id(v);
             format!("\"{}_{}\"", v, id)
@@ -87,7 +91,14 @@ fn get_idx(node: &Node, idx: &mut HashMap<char, usize>) -> String {
 fn print_dot_node(dot: &mut String, node: &Node, idx: &mut HashMap<char, usize>) -> String {
     let id = get_idx(node, idx);
     match node {
-        Val(v) => {
+        Const(c) => {
+            dot.push_str(&format!(
+                "\t{} [label=\"{}\"];\n",
+                id,
+                (*c as u8).to_string()
+            ));
+        }
+        Var(v) => {
             let v = v.get().name;
             dot.push_str(&format!("\t{} [label=\"{}\"];\n", id, v));
         }

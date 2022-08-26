@@ -107,14 +107,15 @@ mod tests {
 
     impl Tree {
         fn set_var(&self, name: char, value: bool) {
-            self.variables[name as usize - 'A' as usize].set(Var { name, value })
+            self.variables[name as usize - 'A' as usize].set(Variable { name, value })
         }
     }
 
     impl Node {
         fn eval(&self) -> bool {
             match self {
-                Val(v) => v.get().value,
+                Const(c) => *c,
+                Var(v) => v.get().value,
                 Not(n) => !n.eval(),
                 Binary { op, left, right } => match op {
                     And => left.eval() && right.eval(),

@@ -16,7 +16,7 @@ pub fn random_rpn_expr(maxdepth: u32) -> String {
     let vals = (b'A'..=b'A' + (rng() % 26) as u8)
         .map(|x| x as char)
         .map(|x| {
-            Rc::new(Cell::new(Var {
+            Rc::new(Cell::new(Variable {
                 name: x,
                 value: false,
             }))
@@ -25,12 +25,12 @@ pub fn random_rpn_expr(maxdepth: u32) -> String {
     random_node(&vals, maxdepth).to_string()
 }
 
-fn random_node(vals: &[Rc<Cell<Var>>], maxdepth: u32) -> Node {
+fn random_node(vals: &[Rc<Cell<Variable>>], maxdepth: u32) -> Node {
     use BinOp::*;
     use Node::*;
 
     if maxdepth == 0 {
-        return Val(vals[rng() % vals.len()].clone());
+        return Var(vals[rng() % vals.len()].clone());
     }
     let n = if maxdepth >= 5 {
         rng() % 6 + 1
@@ -38,7 +38,7 @@ fn random_node(vals: &[Rc<Cell<Var>>], maxdepth: u32) -> Node {
         rng() % 7
     };
     match n {
-        0 => Val(vals[rng() % vals.len()].clone()),
+        0 => Var(vals[rng() % vals.len()].clone()),
         1 => Not(Box::new(random_node(vals, maxdepth - 1))),
         n => Binary {
             op: match n {

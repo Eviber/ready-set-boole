@@ -5,7 +5,7 @@ use BinOp::*;
 use Node::*;
 use ParseError::*;
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq)]
 pub enum BinOp {
     And,
     Or,
@@ -15,7 +15,7 @@ pub enum BinOp {
 }
 
 #[derive(Clone, Copy)]
-pub struct Var {
+pub struct Variable {
     pub name: char,
     pub value: bool,
 }
@@ -28,12 +28,13 @@ pub enum Node {
         right: Box<Node>,
     },
     Not(Box<Node>),
-    Val(Rc<Cell<Var>>),
+    Var(Rc<Cell<Variable>>),
+    Const(bool),
 }
 
 pub struct Tree {
     pub root: Node,
-    pub variables: Vec<Rc<Cell<Var>>>,
+    pub variables: Vec<Rc<Cell<Variable>>>,
 }
 
 #[derive(PartialEq)]
@@ -81,7 +82,8 @@ impl fmt::Display for Node {
         match self {
             Binary { op, left, right } => write!(f, "{}{}{}", left, right, op),
             Not(operand) => write!(f, "{}!", operand),
-            Val(val) => write!(f, "{}", val.get().name),
+            Var(val) => write!(f, "{}", val.get().name),
+            Const(val) => write!(f, "{}", *val as u8),
         }
     }
 }
@@ -100,9 +102,9 @@ impl std::str::FromStr for Tree {
     type Err = ParseError;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let mut stack = Vec::with_capacity(s.len());
-        let variables: Vec<Rc<Cell<Var>>> = ('A'..='Z')
+        let variables: Vec<Rc<Cell<Variable>>> = ('A'..='Z')
             .map(|c| {
-                Rc::new(Cell::new(Var {
+                Rc::new(Cell::new(Variable {
                     name: c,
                     value: false,
                 }))
@@ -112,7 +114,7 @@ impl std::str::FromStr for Tree {
         for c in s.chars() {
             match c {
                 'A'..='Z' => {
-                    stack.push(Val(variables[c as usize - b'A' as usize].clone()));
+                    stack.push(Var(variables[c as usize - b'A' as usize].clone()));
                 }
                 '!' => {
                     let operand = stack.pop().ok_or(MissingOperand)?;
@@ -201,7 +203,8 @@ impl std::ops::Not for Node {
 impl Node {
     pub fn cnf(self) -> Box<Node> {
         match self {
-            Val(v) => Box::new(Val(v)),
+            Const(val) => Box::new(Const(val)),
+            Var(v) => Box::new(Var(v)),
             Binary { op, left, right } => match op {
                 // Xor -> (A | B) & (!A | !B)
                 Xor => ((left.clone() | right.clone()) & (!left | !right)).cnf(),
@@ -237,7 +240,8 @@ impl Node {
                 }
             },
             Not(operand) => match *operand {
-                Val(v) => !Val(v),
+                Const(val) => Box::new(Const(!val)),
+                Var(v) => !Var(v),
                 Not(operand) => (*operand).cnf(),
                 Binary { op, left, right } => match op {
                     // !(A & B) -> !A | !B
