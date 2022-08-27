@@ -20,6 +20,8 @@ pub struct Variable {
     pub value: bool,
 }
 
+pub type VarCell = Rc<Cell<Variable>>;
+
 #[derive(Clone)]
 pub enum Node {
     Binary {
@@ -28,13 +30,13 @@ pub enum Node {
         right: Box<Node>,
     },
     Not(Box<Node>),
-    Var(Rc<Cell<Variable>>),
+    Var(VarCell),
     Const(bool),
 }
 
 pub struct Tree {
     pub root: Node,
-    pub variables: Vec<Rc<Cell<Variable>>>,
+    pub variables: Vec<VarCell>,
 }
 
 #[derive(PartialEq)]
@@ -102,7 +104,7 @@ impl std::str::FromStr for Tree {
     type Err = ParseError;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let mut stack = Vec::with_capacity(s.len());
-        let variables: Vec<Rc<Cell<Variable>>> = ('A'..='Z')
+        let variables: Vec<VarCell> = ('A'..='Z')
             .map(|c| {
                 Rc::new(Cell::new(Variable {
                     name: c,

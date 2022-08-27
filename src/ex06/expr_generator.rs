@@ -26,7 +26,7 @@ pub fn random_rpn_expr(maxdepth: u32, maxvars: usize) -> String {
     random_node(&vals, maxdepth).to_string()
 }
 
-fn random_node(vals: &[Rc<Cell<Variable>>], maxdepth: u32) -> Node {
+fn random_node(vals: &[VarCell], maxdepth: u32) -> Node {
     use BinOp::*;
     use Node::*;
 
