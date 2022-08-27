@@ -90,9 +90,9 @@ mod tests {
         assert_eq!(cnf, expected, "formula: {}", formula);
     }
 
-    fn get_table(input: &str) -> Vec<bool> {
+    fn get_table(input: &str, vars: &str) -> Vec<bool> {
         let tree = input.parse::<Tree>().expect("input is valid");
-        let var_list: Vec<char> = ('A'..='Z').filter(|&c| input.contains(c)).collect();
+        let var_list: Vec<char> = ('A'..='Z').filter(|&c| vars.contains(c)).collect();
         let mut res = Vec::with_capacity(1 << var_list.len());
         for i in 0..(1 << var_list.len()) {
             for (j, v) in var_list.iter().enumerate() {
@@ -141,11 +141,25 @@ mod tests {
     }
 
     #[test]
-    fn ex06_random_test() {
-        for _ in 0..100 {
+    fn ex06_random_test_cnf() {
+        for _ in 0..1000 {
             let expr = random_rpn_expr(3, 5);
             let cnf = conjunctive_normal_form(&expr);
-            assert_eq!(get_table(&cnf), get_table(&expr), "{}", expr);
+            assert_eq!(get_table(&cnf, &expr), get_table(&expr, &expr), "{}", expr);
+        }
+    }
+
+    #[test]
+    fn ex06_random_test_simplify() {
+        for _ in 0..1000 {
+            let expr = random_rpn_expr(3, 3);
+            let simp = expr
+                .parse::<Tree>()
+                .expect("input is valid")
+                .root
+                .simplify()
+                .to_string();
+            assert_eq!(get_table(&simp, &expr), get_table(&expr, &expr), "{}", expr);
         }
     }
 }
