@@ -115,9 +115,8 @@ impl std::str::FromStr for Tree {
 
         for c in s.chars() {
             match c {
-                'A'..='Z' => {
-                    stack.push(Var(variables[c as usize - b'A' as usize].clone()));
-                }
+                '0' | '1' => stack.push(Node::Const(c == '1')),
+                'A'..='Z' => stack.push(Var(variables[c as usize - b'A' as usize].clone())),
                 '!' => {
                     let operand = stack.pop().ok_or(MissingOperand)?;
                     stack.push(Not(Box::new(operand)));
@@ -273,8 +272,15 @@ impl Node {
                     right: r,
                 },
             ) => {
-                op == o
-                    && ((left.equals(l) && right.equals(r)) || (left.equals(r) && right.equals(l)))
+                if op == o {
+                    if op != &Impl {
+                        left.equals(l) && right.equals(r) || (left.equals(r) && right.equals(l))
+                    } else {
+                        left.equals(l) && right.equals(r)
+                    }
+                } else {
+                    false
+                }
             }
             (Not(a), Not(b)) => a.equals(b),
             _ => false,
@@ -289,13 +295,7 @@ impl Node {
                 Const(val) => Box::new(Const(!val)),
                 Var(v) => !Var(v),
                 Not(n) => (*n).simplify(),
-                Binary { op, left, right } => match op {
-                    And => (!left | !right).simplify(),
-                    Or => (!left & !right).simplify(),
-                    Leq => (left ^ right).simplify(),
-                    Xor => leq(left, right).simplify(),
-                    Impl => (!left | right).simplify(),
-                },
+                Binary { op, left, right } => !Binary { op, left, right }.simplify(),
             },
             Binary { op, left, right } => {
                 let left = left.simplify();
