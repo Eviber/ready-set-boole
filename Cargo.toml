@@ -37,4 +37,8 @@ path = "src/ex06/ex06.rs"
 name = "ex07"
 path = "src/ex07/ex07.rs"
 
+[[bin]]
+name = "ex08"
+path = "src/ex08/ex08.rs"
+
 [dependencies]
