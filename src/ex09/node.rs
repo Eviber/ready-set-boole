@@ -4,6 +4,7 @@ use std::rc::Rc;
 use BinOp::*;
 use Node::*;
 use ParseError::*;
+use Set::*;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum BinOp {
@@ -167,26 +168,31 @@ impl std::str::FromStr for Tree {
     }
 }
 
-// TODO: implement binary operations for node
+fn join(mut a: Vec<i32>, b: Vec<i32>) -> Vec<i32> {
+    a.extend(b);
+    a.sort_unstable();
+    a.dedup();
+    a
+}
+
+fn remove(a: Vec<i32>, b: Vec<i32>) -> Vec<i32> {
+    a.iter().filter(|&val| !b.contains(val)).copied().collect()
+}
+
+fn intersect(mut a: Vec<i32>, b: Vec<i32>) -> Vec<i32> {
+    a.retain(|val| b.contains(val));
+    a
+}
+
 impl std::ops::BitOr for Set {
     type Output = Set;
 
     fn bitor(self, other: Set) -> Set {
         match (self, other) {
-            (Set::Positive(mut a), Set::Positive(mut b)) => {
-                a.append(&mut b);
-                a.sort();
-                a.dedup();
-                Set::Positive(a)
-            }
-            (Set::Positive(mut a), Set::Negative(mut b)) => {
-                Set::Negative(b.iter().filter(|&x| !a.contains(x)).cloned().collect())
-            }
-            (Set::Negative(mut a), Set::Positive(mut b)) => {
-                Set::Negative(a.iter().filter(|&x| !b.contains(x)).cloned().collect())
-            }
-            (Set::Negative(mut a), Set::Negative(mut b)) => {
-                Set::Negative(a.iter().filter(|&x| b.contains(x)).cloned().collect())
+            (Positive(vec1), Positive(vec2)) => Positive(join(vec1, vec2)),
+            (Negative(vec1), Negative(vec2)) => Negative(join(vec1, vec2)),
+            (Positive(pvec), Negative(nvec)) | (Negative(nvec), Positive(pvec)) => {
+                Negative(remove(nvec, pvec))
             }
         }
     }
@@ -196,20 +202,10 @@ impl std::ops::BitAnd for Set {
     type Output = Set;
     fn bitand(self, other: Set) -> Set {
         match (self, other) {
-            (Set::Positive(mut a), Set::Positive(mut b)) => {
-                Set::Positive(a.iter().filter(|&x| b.contains(x)).cloned().collect())
-            }
-            (Set::Positive(mut a), Set::Negative(mut b)) => {
-                Set::Positive(a.iter().filter(|&x| !b.contains(x)).cloned().collect())
-            }
-            (Set::Negative(mut a), Set::Positive(mut b)) => {
-                Set::Positive(b.iter().filter(|&x| !a.contains(x)).cloned().collect())
-            }
-            (Set::Negative(mut a), Set::Negative(mut b)) => {
-                a.append(&mut b);
-                a.sort();
-                a.dedup();
-                Set::Negative(a)
+            (Positive(vec1), Positive(vec2)) => Positive(intersect(vec1, vec2)),
+            (Negative(vec1), Negative(vec2)) => Negative(join(vec1, vec2)),
+            (Positive(pvec), Negative(nvec)) | (Negative(nvec), Positive(pvec)) => {
+                Negative(remove(pvec, nvec))
             }
         }
     }
@@ -219,8 +215,8 @@ impl std::ops::Not for Set {
     type Output = Set;
     fn not(self) -> Set {
         match self {
-            Set::Positive(a) => Set::Negative(a),
-            Set::Negative(a) => Set::Positive(a),
+            Positive(a) => Negative(a),
+            Negative(a) => Positive(a),
         }
     }
 }
@@ -233,6 +229,32 @@ impl std::ops::BitAnd for Box<Node> {
             left: self,
             right: other,
         })
+    }
+}
+
+impl std::ops::BitXor for Set {
+    type Output = Set;
+    fn bitxor(self, other: Set) -> Set {
+        match (self, other) {
+            (Positive(mut a), Positive(mut b)) => {
+                let mut c = a
+                    .iter()
+                    .filter(|&x| !b.contains(x))
+                    .copied()
+                    .collect::<Vec<_>>();
+                c.append(&mut b.iter().filter(|&x| !a.contains(x)).cloned().collect());
+                Positive(c)
+            }
+            (Positive(mut a), Negative(mut b)) => {
+                Positive(a.iter().filter(|&x| b.contains(x)).cloned().collect())
+            }
+            (Negative(mut a), Positive(mut b)) => {
+                Positive(b.iter().filter(|&x| a.contains(x)).cloned().collect())
+            }
+            (Negative(mut a), Negative(mut b)) => {
+                Negative(a.iter().filter(|&x| b.contains(x)).cloned().collect())
+            }
+        }
     }
 }
 
@@ -283,7 +305,7 @@ impl Node {
     pub fn eval_set(&self) -> Set {
         match self {
             Const(c) => unreachable!("Const nodes should not be evaluated"),
-            Var(v) => Set::Positive(v.borrow().value.clone()),
+            Var(v) => Positive(v.borrow().value.clone()),
             Not(n) => !n.eval_set(),
             Binary { op, left, right } => match op {
                 And => left.eval_set() & right.eval_set(),
