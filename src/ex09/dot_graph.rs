@@ -70,7 +70,7 @@ fn get_idx(node: &Node, idx: &mut HashMap<char, usize>) -> String {
             format!("\"{}_{}\"", (*c as u8), id)
         }
         Var(v) => {
-            let v = v.get().name;
+            let v = v.borrow().name;
             let id = get_id(v);
             format!("\"{}_{}\"", v, id)
         }
@@ -94,7 +94,7 @@ fn print_dot_node(dot: &mut String, node: &Node, idx: &mut HashMap<char, usize>)
             writeln!(dot, "\t{} [label=\"{}\"];", id, (*c as u8)).unwrap();
         }
         Var(v) => {
-            let v = v.get().name;
+            let v = v.borrow().name;
             writeln!(dot, "\t{} [label=\"{}\"];", id, v).unwrap();
         }
         Binary { op, left, right } => {

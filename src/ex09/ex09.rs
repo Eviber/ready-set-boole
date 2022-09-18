@@ -77,7 +77,8 @@ fn main() -> Result<(), ParseError> {
     }
     // [[0, 1, 2], [0, 3, 4]]
     let sets = vec![vec![0, 1, 2], vec![0, 3, 4]];
-    println!("{}", eval_set(&expr, sets));
+    println!("Sets:\n{:?}", sets);
+    println!("{:?}", eval_set(&expr, sets));
     Ok(())
 }
 

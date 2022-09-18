@@ -22,7 +22,7 @@ pub struct Variable {
 }
 
 #[derive(Clone)]
-enum Set {
+pub enum Set {
     Positive(Vec<i32>),
     Negative(Vec<i32>),
 }
@@ -211,12 +211,36 @@ impl std::ops::BitAnd for Set {
     }
 }
 
+impl std::ops::BitXor for Set {
+    type Output = Set;
+    fn bitxor(self, other: Set) -> Set {
+        match (self, other) {
+            (Positive(a), Positive(b)) | (Negative(a), Negative(b)) => {
+                Positive(join(remove(a.clone(), b.clone()), remove(b, a)))
+            }
+            (Positive(p), Negative(n)) | (Negative(n), Positive(p)) => {
+                Negative(join(remove(p.clone(), n.clone()), remove(n, p)))
+            }
+        }
+    }
+}
+
 impl std::ops::Not for Set {
     type Output = Set;
     fn not(self) -> Set {
         match self {
             Positive(a) => Negative(a),
             Negative(a) => Positive(a),
+        }
+    }
+}
+
+impl Set {
+    fn equals(self, other: Set) -> Set {
+        let res = |a: Vec<i32>, b: Vec<i32>| join(remove(a.clone(), b.clone()), remove(b, a));
+        match (self, other) {
+            (Positive(a), Positive(b)) | (Negative(a), Negative(b)) => Negative(res(a, b)),
+            (Positive(a), Negative(b)) | (Negative(a), Positive(b)) => Positive(res(a, b)),
         }
     }
 }
@@ -229,32 +253,6 @@ impl std::ops::BitAnd for Box<Node> {
             left: self,
             right: other,
         })
-    }
-}
-
-impl std::ops::BitXor for Set {
-    type Output = Set;
-    fn bitxor(self, other: Set) -> Set {
-        match (self, other) {
-            (Positive(mut a), Positive(mut b)) => {
-                let mut c = a
-                    .iter()
-                    .filter(|&x| !b.contains(x))
-                    .copied()
-                    .collect::<Vec<_>>();
-                c.append(&mut b.iter().filter(|&x| !a.contains(x)).cloned().collect());
-                Positive(c)
-            }
-            (Positive(mut a), Negative(mut b)) => {
-                Positive(a.iter().filter(|&x| b.contains(x)).cloned().collect())
-            }
-            (Negative(mut a), Positive(mut b)) => {
-                Positive(b.iter().filter(|&x| a.contains(x)).cloned().collect())
-            }
-            (Negative(mut a), Negative(mut b)) => {
-                Negative(a.iter().filter(|&x| b.contains(x)).cloned().collect())
-            }
-        }
     }
 }
 
@@ -284,6 +282,17 @@ impl std::ops::Not for Box<Node> {
     }
 }
 
+impl std::ops::BitOr for Box<Node> {
+    type Output = Box<Node>;
+    fn bitor(self, other: Box<Node>) -> Box<Node> {
+        Box::new(Binary {
+            op: Or,
+            left: self,
+            right: other,
+        })
+    }
+}
+
 impl std::ops::Not for Node {
     type Output = Box<Node>;
     fn not(self) -> Box<Node> {
@@ -298,20 +307,38 @@ impl Tree {
             .value = vec;
     }
 
-    pub fn eval_set(&self, sets: Vec<Vec<i32>>) -> Vec<i32> {}
+    pub fn eval_set(&self, sets: Vec<Vec<i32>>) -> Vec<i32> {
+        let mut universe = sets.iter().flatten().copied().collect::<Vec<_>>();
+        universe.sort_unstable();
+        universe.dedup();
+        for (i, var) in self.varlist.iter().enumerate() {
+            self.set_vec(*var, sets.get(i).unwrap_or(&vec![]).clone());
+        }
+        match self.root.eval_set() {
+            Positive(a) => a,
+            Negative(a) => universe
+                .iter()
+                .filter(|&val| !a.contains(val))
+                .copied()
+                .collect(),
+        }
+    }
 }
 
 impl Node {
     pub fn eval_set(&self) -> Set {
         match self {
-            Const(c) => unreachable!("Const nodes should not be evaluated"),
+            Const(c) => match c {
+                false => Negative(vec![]),
+                true => Positive(vec![]),
+            },
             Var(v) => Positive(v.borrow().value.clone()),
             Not(n) => !n.eval_set(),
             Binary { op, left, right } => match op {
                 And => left.eval_set() & right.eval_set(),
                 Or => left.eval_set() | right.eval_set(),
                 Impl => !left.eval_set() | right.eval_set(),
-                Leq => left.eval_set() == right.eval_set(),
+                Leq => left.eval_set().equals(right.eval_set()),
                 Xor => left.eval_set() ^ right.eval_set(),
             },
         }
@@ -378,7 +405,7 @@ impl Node {
     fn equals(&self, other: &Node) -> bool {
         match (self, other) {
             (Const(a), Const(b)) => a == b,
-            (Var(a), Var(b)) => a.get().name == b.get().name,
+            (Var(a), Var(b)) => a.borrow().name == b.borrow().name,
             (
                 Binary { op, left, right },
                 Binary {
