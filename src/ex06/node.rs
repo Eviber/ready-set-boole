@@ -5,7 +5,7 @@ use BinOp::*;
 use Node::*;
 use ParseError::*;
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub enum BinOp {
     And,
     Or,
@@ -39,7 +39,7 @@ pub struct Tree {
     pub variables: Vec<VarCell>,
 }
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Eq)]
 pub enum ParseError {
     MissingOperand,
     InvalidCharacter(char),

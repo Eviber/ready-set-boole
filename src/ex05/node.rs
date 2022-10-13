@@ -38,7 +38,7 @@ pub struct Tree {
     pub variables: Vec<Rc<Cell<Var>>>,
 }
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Eq)]
 pub enum ParseError {
     MissingOperand,
     InvalidCharacter(char),

@@ -24,7 +24,7 @@ pub enum Node {
     Val(bool),
 }
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Eq)]
 pub enum ParseError {
     MissingOperand,
     InvalidCharacter(char),
