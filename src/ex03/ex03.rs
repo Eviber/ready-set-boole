@@ -77,45 +77,43 @@ fn main() -> Result<(), ParseError> {
 mod tests {
     use crate::node::Node;
 
+    #[allow(dead_code)]
     fn to_bool(s: &str) -> bool {
         s.parse::<Node>().unwrap().into()
     }
 
     #[test]
     fn ex03_basic_tests() {
-        assert_eq!(to_bool("0"), false);
-        assert_eq!(to_bool("1"), true);
-        assert_eq!(to_bool("1!"), false);
-        assert_eq!(to_bool("0!"), true);
-        assert_eq!(to_bool("11&"), true);
-        assert_eq!(to_bool("10&"), false);
-        assert_eq!(to_bool("10|"), true);
-        assert_eq!(to_bool("01|"), true);
-        assert_eq!(to_bool("00|"), false);
-        assert_eq!(to_bool("10^"), true);
-        assert_eq!(to_bool("11^"), false);
-        assert_eq!(to_bool("10>"), false);
-        assert_eq!(to_bool("01>"), true);
-        assert_eq!(to_bool("10="), false);
-        assert_eq!(to_bool("11="), true);
+        assert!(!to_bool("0"));
+        assert!(to_bool("1"));
+        assert!(!to_bool("1!"));
+        assert!(to_bool("0!"));
+        assert!(to_bool("11&"));
+        assert!(!to_bool("10&"));
+        assert!(to_bool("10|"));
+        assert!(to_bool("01|"));
+        assert!(!to_bool("00|"));
+        assert!(to_bool("10^"));
+        assert!(!to_bool("11^"));
+        assert!(!to_bool("10>"));
+        assert!(to_bool("01>"));
+        assert!(!to_bool("10="));
+        assert!(to_bool("11="));
     }
 
     #[test]
     fn ex03_subject_tests() {
-        assert_eq!(to_bool("10&"), false);
-        assert_eq!(to_bool("10|"), true);
-        assert_eq!(to_bool("11>"), true);
-        assert_eq!(to_bool("10="), false);
-        assert_eq!(to_bool("1011||="), true);
+        assert!(!to_bool("10&"));
+        assert!(to_bool("10|"));
+        assert!(to_bool("11>"));
+        assert!(!to_bool("10="));
+        assert!(to_bool("1011||="));
     }
 
     #[test]
     fn ex03_advanced_tests() {
-        assert_eq!(to_bool("1011||="), true);
-        assert_eq!(
-            to_bool("111&!!!1|01=|=11>^0|0!1^11>1|0>1^>10^1|>10^>^"),
-            true
-        );
+        assert!(to_bool("1011||="));
+        assert!(to_bool("111&!!!1|01=|=11>^0|0!1^11>1|0>1^>10^1|>10^>^"));
     }
 
     #[test]

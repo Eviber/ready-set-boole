@@ -132,13 +132,13 @@ impl std::str::FromStr for Tree {
                 }
             }
         }
-        if stack.len() != 1 {
-            Err(UnbalancedExpression)
-        } else {
+        if stack.len() == 1 {
             Ok(Tree {
                 root: stack.pop().unwrap(),
                 variables,
             })
+        } else {
+            Err(UnbalancedExpression)
         }
     }
 }

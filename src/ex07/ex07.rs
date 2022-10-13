@@ -81,13 +81,5 @@ fn main() -> Result<(), ParseError> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::node::BinOp::*;
-    use crate::node::Node::*;
-    use crate::node::*;
-
-    fn test_cnf(formula: &str, expected: &str) {
-        let cnf = conjunctive_normal_form(formula);
-        assert_eq!(cnf, expected, "formula: {}", formula);
-    }
+    // TODO
 }

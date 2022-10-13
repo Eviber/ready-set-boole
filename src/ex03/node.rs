@@ -111,10 +111,10 @@ impl std::str::FromStr for Node {
                 }
             }
         }
-        if stack.len() != 1 {
-            Err(UnbalancedExpression)
-        } else {
+        if stack.len() == 1 {
             Ok(stack.pop().unwrap())
+        } else {
+            Err(UnbalancedExpression)
         }
     }
 }

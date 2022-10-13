@@ -133,13 +133,13 @@ impl std::str::FromStr for Tree {
                 }
             }
         }
-        if stack.len() != 1 {
-            Err(UnbalancedExpression)
-        } else {
+        if stack.len() == 1 {
             Ok(Tree {
                 root: stack.pop().unwrap(),
                 variables,
             })
+        } else {
+            Err(UnbalancedExpression)
         }
     }
 }
@@ -253,8 +253,8 @@ impl Node {
                     Leq => (left ^ right).cnf(),
                     // !(A ^ B) -> A = B
                     Xor => leq(left, right).cnf(),
-                    // else, first convert to & or |, then call cnf on the result
-                    _ => (!Binary { op, left, right }.cnf()).cnf(),
+                    // !(A > B) -> A & !B
+                    Impl => (left & !right).cnf(),
                 },
             },
         }
@@ -273,10 +273,10 @@ impl Node {
                 },
             ) => {
                 if op == o {
-                    if op != &Impl {
-                        left.equals(l) && right.equals(r) || (left.equals(r) && right.equals(l))
-                    } else {
+                    if op == &Impl {
                         left.equals(l) && right.equals(r)
+                    } else {
+                        left.equals(l) && right.equals(r) || (left.equals(r) && right.equals(l))
                     }
                 } else {
                     false
@@ -302,8 +302,7 @@ impl Node {
                 let right = right.simplify();
                 match op {
                     And => Box::new(match (*left, *right) {
-                        (Const(false), _) => Const(false),
-                        (_, Const(false)) => Const(false),
+                        (Const(false), _) | (_, Const(false)) => Const(false),
                         (Const(true), right) => right,
                         (left, Const(true)) => left,
                         (left, right) => {
@@ -319,8 +318,7 @@ impl Node {
                         }
                     }),
                     Or => Box::new(match (*left, *right) {
-                        (Const(true), _) => Const(true),
-                        (_, Const(true)) => Const(true),
+                        (Const(true), _) | (_, Const(true)) => Const(true),
                         (Const(false), right) => right,
                         (left, Const(false)) => left,
                         (left, right) => {
@@ -372,8 +370,7 @@ impl Node {
                         }
                     }),
                     Impl => Box::new(match (*left, *right) {
-                        (Const(false), _) => Const(true),
-                        (_, Const(true)) => Const(true),
+                        (Const(false), _) | (_, Const(true)) => Const(true),
                         (Const(true), right) => right,
                         (left, Const(false)) => *(!left),
                         (left, right) => {

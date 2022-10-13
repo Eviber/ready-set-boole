@@ -146,9 +146,7 @@ impl std::str::FromStr for Tree {
                 }
             }
         }
-        if stack.len() != 1 {
-            Err(UnbalancedExpression)
-        } else {
+        if stack.len() == 1 {
             Ok(Tree {
                 root: stack.pop().unwrap(),
                 variables,
@@ -164,22 +162,24 @@ impl std::str::FromStr for Tree {
                     })
                     .collect(),
             })
+        } else {
+            Err(UnbalancedExpression)
         }
     }
 }
 
-fn join(mut a: Vec<i32>, b: Vec<i32>) -> Vec<i32> {
+fn join(mut a: Vec<i32>, b: &[i32]) -> Vec<i32> {
     a.extend(b);
     a.sort_unstable();
     a.dedup();
     a
 }
 
-fn remove(a: Vec<i32>, b: Vec<i32>) -> Vec<i32> {
+fn remove(a: &[i32], b: &[i32]) -> Vec<i32> {
     a.iter().filter(|&val| !b.contains(val)).copied().collect()
 }
 
-fn intersect(mut a: Vec<i32>, b: Vec<i32>) -> Vec<i32> {
+fn intersect(mut a: Vec<i32>, b: &[i32]) -> Vec<i32> {
     a.retain(|val| b.contains(val));
     a
 }
@@ -189,10 +189,10 @@ impl std::ops::BitOr for Set {
 
     fn bitor(self, other: Set) -> Set {
         match (self, other) {
-            (Positive(vec1), Positive(vec2)) => Positive(join(vec1, vec2)),
-            (Negative(vec1), Negative(vec2)) => Negative(join(vec1, vec2)),
+            (Positive(vec1), Positive(vec2)) => Positive(join(vec1, &vec2)),
+            (Negative(vec1), Negative(vec2)) => Negative(join(vec1, &vec2)),
             (Positive(pvec), Negative(nvec)) | (Negative(nvec), Positive(pvec)) => {
-                Negative(remove(nvec, pvec))
+                Negative(remove(&nvec, &pvec))
             }
         }
     }
@@ -202,10 +202,10 @@ impl std::ops::BitAnd for Set {
     type Output = Set;
     fn bitand(self, other: Set) -> Set {
         match (self, other) {
-            (Positive(vec1), Positive(vec2)) => Positive(intersect(vec1, vec2)),
-            (Negative(vec1), Negative(vec2)) => Negative(join(vec1, vec2)),
+            (Positive(vec1), Positive(vec2)) => Positive(intersect(vec1, &vec2)),
+            (Negative(vec1), Negative(vec2)) => Negative(join(vec1, &vec2)),
             (Positive(pvec), Negative(nvec)) | (Negative(nvec), Positive(pvec)) => {
-                Negative(remove(pvec, nvec))
+                Negative(remove(&pvec, &nvec))
             }
         }
     }
@@ -216,10 +216,10 @@ impl std::ops::BitXor for Set {
     fn bitxor(self, other: Set) -> Set {
         match (self, other) {
             (Positive(a), Positive(b)) | (Negative(a), Negative(b)) => {
-                Positive(join(remove(a.clone(), b.clone()), remove(b, a)))
+                Positive(join(remove(&a, &b), &remove(&b, &a)))
             }
             (Positive(p), Negative(n)) | (Negative(n), Positive(p)) => {
-                Negative(join(remove(p.clone(), n.clone()), remove(n, p)))
+                Negative(join(remove(&p, &n), &remove(&n, &p)))
             }
         }
     }
@@ -237,7 +237,7 @@ impl std::ops::Not for Set {
 
 impl Set {
     fn equals(self, other: Set) -> Set {
-        let res = |a: Vec<i32>, b: Vec<i32>| join(remove(a.clone(), b.clone()), remove(b, a));
+        let res = |a: Vec<i32>, b: Vec<i32>| join(remove(&a, &b), &remove(&b, &a));
         match (self, other) {
             (Positive(a), Positive(b)) | (Negative(a), Negative(b)) => Negative(res(a, b)),
             (Positive(a), Negative(b)) | (Negative(a), Positive(b)) => Positive(res(a, b)),
@@ -307,7 +307,7 @@ impl Tree {
             .value = vec;
     }
 
-    pub fn eval_set(&self, sets: Vec<Vec<i32>>) -> Vec<i32> {
+    pub fn eval_set(&self, sets: &[Vec<i32>]) -> Vec<i32> {
         let mut universe = sets.iter().flatten().copied().collect::<Vec<_>>();
         universe.sort_unstable();
         universe.dedup();
@@ -395,8 +395,8 @@ impl Node {
                     Leq => (left ^ right).cnf(),
                     // !(A ^ B) -> A = B
                     Xor => leq(left, right).cnf(),
-                    // else, first convert to & or |, then call cnf on the result
-                    _ => (!Binary { op, left, right }.cnf()).cnf(),
+                    // !(A > B) -> A & !B
+                    Impl => (left & !right).cnf(),
                 },
             },
         }
@@ -415,10 +415,10 @@ impl Node {
                 },
             ) => {
                 if op == o {
-                    if op != &Impl {
-                        left.equals(l) && right.equals(r) || (left.equals(r) && right.equals(l))
-                    } else {
+                    if op == &Impl {
                         left.equals(l) && right.equals(r)
+                    } else {
+                        left.equals(l) && right.equals(r) || (left.equals(r) && right.equals(l))
                     }
                 } else {
                     false
@@ -444,8 +444,7 @@ impl Node {
                 let right = right.simplify();
                 match op {
                     And => Box::new(match (*left, *right) {
-                        (Const(false), _) => Const(false),
-                        (_, Const(false)) => Const(false),
+                        (Const(false), _) | (_, Const(false)) => Const(false),
                         (Const(true), right) => right,
                         (left, Const(true)) => left,
                         (left, right) => {
@@ -461,8 +460,7 @@ impl Node {
                         }
                     }),
                     Or => Box::new(match (*left, *right) {
-                        (Const(true), _) => Const(true),
-                        (_, Const(true)) => Const(true),
+                        (Const(true), _) | (_, Const(true)) => Const(true),
                         (Const(false), right) => right,
                         (left, Const(false)) => left,
                         (left, right) => {
@@ -514,8 +512,7 @@ impl Node {
                         }
                     }),
                     Impl => Box::new(match (*left, *right) {
-                        (Const(false), _) => Const(true),
-                        (_, Const(true)) => Const(true),
+                        (Const(false), _) | (_, Const(true)) => Const(true),
                         (Const(true), right) => right,
                         (left, Const(false)) => *(!left),
                         (left, right) => {

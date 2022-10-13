@@ -16,7 +16,7 @@ struct Args {
     dot: bool,
 }
 
-fn eval_set(formula: &str, sets: Vec<Vec<i32>>) -> Vec<i32> {
+fn eval_set(formula: &str, sets: &[Vec<i32>]) -> Vec<i32> {
     match formula.parse::<Tree>() {
         Ok(tree) => tree.eval_set(sets),
         Err(e) => {
@@ -51,7 +51,7 @@ fn parse_args() -> Result<Args, String> {
         } else if expr.is_empty() {
             expr = arg;
         } else {
-            let set: Result<Vec<i32>, _> = arg.split(',').map(|s| s.parse()).collect();
+            let set: Result<Vec<i32>, _> = arg.split(',').map(str::parse).collect();
             match set {
                 Ok(set) => sets.push(set),
                 Err(_) => return Err(path),
@@ -83,7 +83,7 @@ fn main() -> Result<(), ParseError> {
         create_graph(&expr.parse::<Tree>()?.root, "ex09_in");
     }
     println!("Sets:\n{:?}", sets);
-    println!("{:?}", eval_set(&expr, sets));
+    println!("{:?}", eval_set(&expr, &sets));
     Ok(())
 }
 

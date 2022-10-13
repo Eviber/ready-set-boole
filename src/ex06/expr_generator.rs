@@ -1,4 +1,4 @@
-use crate::node::*;
+use crate::node::{BinOp, Node, VarCell, Variable};
 use std::cell::Cell;
 use std::fs::File;
 use std::io::Read;

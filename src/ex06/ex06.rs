@@ -85,11 +85,13 @@ mod tests {
     use crate::node::Node::*;
     use crate::node::*;
 
+    #[allow(dead_code)]
     fn test_cnf(formula: &str, expected: &str) {
         let cnf = conjunctive_normal_form(formula);
         assert_eq!(cnf, expected, "formula: {}", formula);
     }
 
+    #[allow(dead_code)]
     fn get_table(input: &str, vars: &str) -> Vec<bool> {
         let tree = input.parse::<Tree>().expect("input is valid");
         let var_list: Vec<char> = ('A'..='Z').filter(|&c| vars.contains(c)).collect();
@@ -106,12 +108,14 @@ mod tests {
     }
 
     impl Tree {
+        #[allow(dead_code)]
         fn set_var(&self, name: char, value: bool) {
             self.variables[name as usize - 'A' as usize].set(Variable { name, value })
         }
     }
 
     impl Node {
+        #[allow(dead_code)]
         fn eval(&self) -> bool {
             match self {
                 Const(c) => *c,

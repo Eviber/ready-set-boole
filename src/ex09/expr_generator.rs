@@ -1,4 +1,4 @@
-use crate::node::*;
+use crate::node::{BinOp, Node, VarCell, Variable};
 use std::cell::RefCell;
 use std::fs::File;
 use std::io::Read;
@@ -17,7 +17,7 @@ fn rand_vec() -> Vec<i32> {
     for _ in 0..rng() % 10 {
         v.push(rng() as i32);
     }
-    v.sort();
+    v.sort_unstable();
     v.dedup();
     v
 }
