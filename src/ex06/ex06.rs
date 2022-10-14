@@ -17,7 +17,7 @@ struct Args {
 
 fn conjunctive_normal_form(formula: &str) -> String {
     match formula.parse::<Tree>() {
-        Ok(tree) => tree.root.simplify().cnf().simplify().to_string(),
+        Ok(tree) => tree.root.cnf().simplify().to_string(),
         Err(e) => format!("Error: {:?}", e),
     }
 }
@@ -72,7 +72,7 @@ fn main() -> Result<(), ParseError> {
     let tree = expr.parse::<Tree>()?.root;
     if dot {
         create_graph(&tree, "ex06_in");
-        create_graph(&(tree.simplify().cnf().simplify()), "ex06_out");
+        create_graph(&(tree.cnf().simplify()), "ex06_out");
     }
     println!("{}", conjunctive_normal_form(&expr));
     Ok(())
@@ -82,8 +82,9 @@ fn main() -> Result<(), ParseError> {
 mod tests {
     use super::*;
     use crate::node::BinOp::*;
-    use crate::node::Node::*;
-    use crate::node::*;
+    use crate::node::Node;
+    use crate::node::{Literal, Variable};
+    use crate::tests::Literal::{Binary, Const, Var};
 
     #[allow(dead_code)]
     fn test_cnf(formula: &str, expected: &str) {
@@ -110,25 +111,29 @@ mod tests {
     impl Tree {
         #[allow(dead_code)]
         fn set_var(&self, name: char, value: bool) {
-            self.variables[name as usize - 'A' as usize].set(Variable { name, value })
+            self.variables[name as usize - 'A' as usize].set(Variable { name, value });
         }
     }
 
     impl Node {
         #[allow(dead_code)]
         fn eval(&self) -> bool {
-            match self {
+            let res = match &self.literal {
                 Const(c) => *c,
                 Var(v) => v.get().value,
-                Not(n) => !n.eval(),
-                Binary { op, left, right } => match op {
-                    And => left.eval() && right.eval(),
-                    Or => left.eval() || right.eval(),
-                    Impl => !left.eval() || right.eval(),
-                    Leq => left.eval() == right.eval(),
-                    Xor => left.eval() ^ right.eval(),
-                },
-            }
+                Binary { op, children } => {
+                    let left = children[0].eval();
+                    let right = children[1].eval();
+                    match op {
+                        And => left && right,
+                        Or => left || right,
+                        Impl => !left || right,
+                        Leq => left == right,
+                        Xor => left ^ right,
+                    }
+                }
+            };
+            res ^ (self.not % 2 == 1)
         }
     }
 

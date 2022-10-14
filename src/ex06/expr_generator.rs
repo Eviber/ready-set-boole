@@ -1,4 +1,4 @@
-use crate::node::{BinOp, Node, VarCell, Variable};
+use crate::node::{BinOp, Literal, Node, VarCell, Variable};
 use std::cell::Cell;
 use std::fs::File;
 use std::io::Read;
@@ -28,10 +28,13 @@ pub fn random_rpn_expr(maxdepth: u32, maxvars: usize) -> String {
 
 fn random_node(vals: &[VarCell], maxdepth: u32) -> Node {
     use BinOp::*;
-    use Node::*;
+    use Literal::*;
 
     if maxdepth == 0 {
-        return Var(vals[rng() % vals.len()].clone());
+        return Node {
+            not: 0,
+            literal: Var(vals[rng() % vals.len()].clone()),
+        };
     }
     let n = if maxdepth >= 5 {
         rng() % 6 + 1
@@ -39,18 +42,29 @@ fn random_node(vals: &[VarCell], maxdepth: u32) -> Node {
         rng() % 7
     };
     match n {
-        0 => Var(vals[rng() % vals.len()].clone()),
-        1 => Not(Box::new(random_node(vals, maxdepth - 1))),
-        n => Binary {
-            op: match n {
-                2 => And,
-                3 => Or,
-                4 => Xor,
-                5 => Impl,
-                _ => Leq,
+        0 => Node {
+            not: 0,
+            literal: Var(vals[rng() % vals.len()].clone()),
+        },
+        1 => Node {
+            not: 1,
+            literal: random_node(vals, maxdepth - 1).literal,
+        },
+        n => Node {
+            not: 0,
+            literal: Binary {
+                op: match n {
+                    2 => And,
+                    3 => Or,
+                    4 => Xor,
+                    5 => Impl,
+                    _ => Leq,
+                },
+                children: vec![
+                    random_node(vals, maxdepth - 1),
+                    random_node(vals, maxdepth - 1),
+                ],
             },
-            left: Box::new(random_node(vals, maxdepth - 1)),
-            right: Box::new(random_node(vals, maxdepth - 1)),
         },
     }
 }

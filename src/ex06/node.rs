@@ -2,7 +2,7 @@ use std::cell::Cell;
 use std::fmt;
 use std::rc::Rc;
 use BinOp::*;
-use Node::*;
+use Literal::*;
 use ParseError::*;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -23,15 +23,16 @@ pub struct Variable {
 pub type VarCell = Rc<Cell<Variable>>;
 
 #[derive(Clone)]
-pub enum Node {
-    Binary {
-        op: BinOp,
-        left: Box<Node>,
-        right: Box<Node>,
-    },
-    Not(Box<Node>),
+pub enum Literal {
+    Binary { op: BinOp, children: Vec<Node> },
     Var(VarCell),
     Const(bool),
+}
+
+#[derive(Clone)]
+pub struct Node {
+    pub not: usize,
+    pub literal: Literal,
 }
 
 pub struct Tree {
@@ -79,14 +80,36 @@ impl fmt::Display for BinOp {
     }
 }
 
-impl fmt::Display for Node {
+impl fmt::Display for Literal {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Binary { op, left, right } => write!(f, "{}{}{}", left, right, op),
-            Not(operand) => write!(f, "{}!", operand),
+            Binary { op, children } => {
+                for child in children {
+                    write!(f, "{}", child)?;
+                }
+                // write the operator one time less than the number of children
+                write!(f, "{}", op.to_string().repeat(children.len() - 1))
+            }
             Var(val) => write!(f, "{}", val.get().name),
             Const(val) => write!(f, "{}", *val as u8),
         }
+    }
+}
+
+impl fmt::Display for Node {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.literal)?;
+        if self.not > 0 {
+            write!(f, "{}", "!".repeat(self.not as usize))
+        } else {
+            Ok(())
+        }
+    }
+}
+
+impl fmt::Debug for Node {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self)
     }
 }
 
@@ -115,21 +138,28 @@ impl std::str::FromStr for Tree {
 
         for c in s.chars() {
             match c {
-                '0' | '1' => stack.push(Node::Const(c == '1')),
-                'A'..='Z' => stack.push(Var(variables[c as usize - b'A' as usize].clone())),
+                '0' | '1' => stack.push(Node {
+                    not: 0,
+                    literal: Const(c == '1'),
+                }),
+                'A'..='Z' => stack.push(Node {
+                    not: 0,
+                    literal: Var(variables[c as usize - b'A' as usize].clone()),
+                }),
                 '!' => {
                     let operand = stack.pop().ok_or(MissingOperand)?;
-                    stack.push(Not(Box::new(operand)));
+                    stack.push(Node {
+                        not: operand.not + 1,
+                        literal: operand.literal,
+                    });
                 }
                 _ => {
-                    let op = c.try_into()?; // BinOp or returns InvalidCharacter
-                    let right = stack.pop().ok_or(MissingOperand)?;
-                    let left = stack.pop().ok_or(MissingOperand)?;
-                    stack.push(Binary {
-                        op,
-                        left: Box::new(left),
-                        right: Box::new(right),
-                    });
+                    let tmp = stack.pop().ok_or(MissingOperand)?; // for the reverse pop order
+                    let literal = Binary {
+                        op: BinOp::try_from(c)?,
+                        children: vec![stack.pop().ok_or(MissingOperand)?, tmp],
+                    };
+                    stack.push(Node { not: 0, literal });
                 }
             }
         }
@@ -144,248 +174,445 @@ impl std::str::FromStr for Tree {
     }
 }
 
+fn new_binary(op: BinOp, children: Vec<Node>) -> Node {
+    Node {
+        not: 0,
+        literal: Binary { op, children },
+    }
+}
+
 // TODO: implement binary operations for node
-impl std::ops::BitOr for Box<Node> {
-    type Output = Box<Node>;
-    fn bitor(self, other: Box<Node>) -> Box<Node> {
-        Box::new(Binary {
-            op: Or,
-            left: self,
-            right: other,
-        })
+impl std::ops::BitOr for Node {
+    type Output = Node;
+    fn bitor(self, other: Node) -> Node {
+        new_binary(Or, vec![self, other])
     }
 }
 
-impl std::ops::BitAnd for Box<Node> {
-    type Output = Box<Node>;
-    fn bitand(self, other: Box<Node>) -> Box<Node> {
-        Box::new(Binary {
-            op: And,
-            left: self,
-            right: other,
-        })
+impl std::ops::BitAnd for Node {
+    type Output = Node;
+    fn bitand(self, other: Node) -> Node {
+        new_binary(And, vec![self, other])
     }
 }
 
-impl std::ops::BitXor for Box<Node> {
-    type Output = Box<Node>;
-    fn bitxor(self, other: Box<Node>) -> Box<Node> {
-        Box::new(Binary {
-            op: Xor,
-            left: self,
-            right: other,
-        })
+impl std::ops::BitXor for Node {
+    type Output = Node;
+    fn bitxor(self, other: Node) -> Node {
+        new_binary(Xor, vec![self, other])
     }
 }
 
-fn leq(left: Box<Node>, right: Box<Node>) -> Box<Node> {
-    Box::new(Binary {
-        op: Leq,
-        left,
-        right,
-    })
+fn leq(left: Node, right: Node) -> Node {
+    new_binary(Leq, vec![left, right])
 }
 
 // not operator
-impl std::ops::Not for Box<Node> {
-    type Output = Box<Node>;
-    fn not(self) -> Box<Node> {
-        Box::new(Not(self))
+impl std::ops::Not for Node {
+    type Output = Node;
+    fn not(self) -> Node {
+        Node {
+            not: self.not + 1,
+            literal: self.literal,
+        }
     }
 }
 
-impl std::ops::Not for Node {
-    type Output = Box<Node>;
-    fn not(self) -> Box<Node> {
-        Box::new(Not(Box::new(self)))
+#[derive(PartialEq, Eq)]
+enum NodeCmp {
+    Equal,
+    NotEqual,
+    Opposite,
+}
+
+impl Node {
+    fn compare(&self, other: &Node) -> NodeCmp {
+        match (&self.literal, &other.literal) {
+            (Var(v1), Var(v2)) => {
+                if v1.get().name == v2.get().name {
+                    if self.not == other.not {
+                        NodeCmp::Equal
+                    } else {
+                        NodeCmp::Opposite
+                    }
+                } else {
+                    NodeCmp::NotEqual
+                }
+            }
+            (Const(c1), Const(c2)) => {
+                if c1 ^ (self.not % 2 == 1) == c2 ^ (other.not % 2 == 1) {
+                    NodeCmp::Equal
+                } else {
+                    NodeCmp::Opposite
+                }
+            }
+            (
+                Binary {
+                    op: op1,
+                    children: children1,
+                },
+                Binary {
+                    op: op2,
+                    children: children2,
+                },
+            ) => {
+                if op1 == op2 && children1.len() == children2.len() && self.not == other.not {
+                    let mut children1 = children1.clone();
+                    let mut children2 = children2.clone();
+                    let cmp = |a: &Node, b: &Node| {
+                        if let Var(v1) = &a.literal {
+                            if let Var(v2) = &b.literal {
+                                if v1.get().name == v2.get().name {
+                                    return a.not < b.not;
+                                }
+                                return v1.get().name < v2.get().name;
+                            }
+                        }
+                        false
+                    };
+                    children1.sort_by(|a, b| cmp(a, b).cmp(&false));
+                    children2.sort_by(|a, b| cmp(a, b).cmp(&false));
+                    for (a, b) in children1.iter().zip(children2.iter()) {
+                        if a.compare(b) != NodeCmp::Equal {
+                            return NodeCmp::NotEqual;
+                        }
+                    }
+                    NodeCmp::Equal
+                } else {
+                    NodeCmp::NotEqual
+                }
+            }
+            _ => NodeCmp::NotEqual,
+        }
     }
 }
 
 impl Node {
-    pub fn cnf(self) -> Box<Node> {
-        match self {
-            Const(val) => Box::new(Const(val)),
-            Var(v) => Box::new(Var(v)),
-            Binary { op, left, right } => match op {
-                // Xor -> (A | B) & (!A | !B)
-                Xor => ((left.clone() | right.clone()) & (!left | !right)).cnf(),
-                // Impl -> !A | B
-                Impl => (!left | right).cnf(),
-                // Leq == (A | !B) & (!A | B)
-                Leq => ((left.clone() | !right.clone()) & (!left | right)).cnf(),
-                And => left.cnf() & right.cnf(),
-                Or => {
-                    // recurse first to bring up any ANDs
-                    let left = left.cnf();
-                    let right = right.cnf();
-                    if let Binary {
-                        op: And,
-                        left: ll,
-                        right: lr,
-                    } = *left
-                    {
-                        // (A & B) | C -> (A | C) & (B | C)
-                        ((ll | right.clone()) & (lr | right)).cnf()
-                    } else if let Binary {
-                        op: And,
-                        left: rl,
-                        right: rr,
-                    } = *right
-                    {
-                        // A & (B | C) -> (A | B) & (A | C)
-                        ((left.clone() | rl) & (left | rr)).cnf()
-                    } else {
-                        // if neither left nor right is an And, we're done
-                        left | right
+    pub fn cnf(self) -> Node {
+        let mut new = self.clone();
+        new.not = self.not % 2;
+        if new.not == 1 {
+            match new.literal {
+                Const(_) | Var(_) => new,
+                Binary { op, children } => {
+                    let left = children[0].clone();
+                    let right = children[1].clone();
+                    match op {
+                        // !(A & B) -> !A | !B
+                        And => (!left | !right).cnf(),
+                        // !(A | B) -> !A & !B
+                        Or => (!left & !right).cnf(),
+                        // !(A = B) -> A ^ B
+                        Leq => (left ^ right).cnf(),
+                        // !(A ^ B) -> A = B
+                        Xor => leq(left, right).cnf(),
+                        // !(A > B) -> A & !B
+                        Impl => (left & !right).cnf(),
                     }
-                }
-            },
-            Not(operand) => match *operand {
-                Const(val) => Box::new(Const(!val)),
-                Var(v) => !Var(v),
-                Not(operand) => (*operand).cnf(),
-                Binary { op, left, right } => match op {
-                    // !(A & B) -> !A | !B
-                    And => (!left | !right).cnf(),
-                    // !(A | B) -> !A & !B
-                    Or => (!left & !right).cnf(),
-                    // !(A = B) -> A ^ B
-                    Leq => (left ^ right).cnf(),
-                    // !(A ^ B) -> A = B
-                    Xor => leq(left, right).cnf(),
-                    // !(A > B) -> A & !B
-                    Impl => (left & !right).cnf(),
-                },
-            },
-        }
-    }
-
-    fn equals(&self, other: &Node) -> bool {
-        match (self, other) {
-            (Const(a), Const(b)) => a == b,
-            (Var(a), Var(b)) => a.get().name == b.get().name,
-            (
-                Binary { op, left, right },
-                Binary {
-                    op: o,
-                    left: l,
-                    right: r,
-                },
-            ) => {
-                if op == o {
-                    if op == &Impl {
-                        left.equals(l) && right.equals(r)
-                    } else {
-                        left.equals(l) && right.equals(r) || (left.equals(r) && right.equals(l))
-                    }
-                } else {
-                    false
                 }
             }
-            (Not(a), Not(b)) => a.equals(b),
-            _ => false,
+        } else {
+            match new.literal {
+                Const(_) | Var(_) => new,
+                Binary { op, children } => {
+                    let left = children[0].clone();
+                    let right = children[1].clone();
+                    match op {
+                        // Xor -> (A | B) & (!A | !B)
+                        Xor => ((left.clone() | right.clone()) & (!left | !right)).cnf(),
+                        // Impl -> !A | B
+                        Impl => (!left | right).cnf(),
+                        // Leq == (A | !B) & (!A | B)
+                        Leq => ((left.clone() | !right.clone()) & (!left | right)).cnf(),
+                        And => left.cnf() & right.cnf(),
+                        Or => {
+                            // recurse first to bring up any ANDs
+                            let left = left.cnf();
+                            let right = right.cnf();
+                            if let Binary { op: And, children } = left.literal {
+                                // (A & B) | C -> (A | C) & (B | C)
+                                ((children[0].clone() | right.clone())
+                                    & (children[1].clone() | right))
+                                    .cnf()
+                            } else if let Binary { op: And, children } = right.literal {
+                                // A & (B | C) -> (A | B) & (A | C)
+                                ((left.clone() | children[0].clone())
+                                    & (left | children[1].clone()))
+                                .cnf()
+                            } else {
+                                // if neither left nor right is an And, we're done
+                                left | right
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 
-    pub fn simplify(self) -> Box<Node> {
-        match self {
-            Const(val) => Box::new(Const(val)),
-            Var(v) => Box::new(Var(v)),
-            Not(n) => match *n {
-                Const(val) => Box::new(Const(!val)),
-                Var(v) => !Var(v),
-                Not(n) => (*n).simplify(),
-                Binary { op, left, right } => !Binary { op, left, right }.simplify(),
+    // fn equals(&self, other: &Node) -> bool {
+    //     match (self, other) {
+    //         (Const(a), Const(b)) => a == b,
+    //         (Var(a), Var(b)) => a.get().name == b.get().name,
+    //         (
+    //             Binary { op, left, right },
+    //             Binary {
+    //                 op: o,
+    //                 left: l,
+    //                 right: r,
+    //             },
+    //         ) => {
+    //             if op == o {
+    //                 if op == &Impl {
+    //                     left.equals(l) && right.equals(r)
+    //                 } else {
+    //                     left.equals(l) && right.equals(r) || (left.equals(r) && right.equals(l))
+    //                 }
+    //             } else {
+    //                 false
+    //             }
+    //         }
+    //         (Not(a), Not(b)) => a.equals(b),
+    //         _ => false,
+    //     }
+    // }
+
+    pub fn simplify(self) -> Node {
+        let mut new = self.clone();
+        new.not = self.not % 2;
+        match new.literal {
+            Const(c) => Node {
+                not: 0,
+                literal: Const(c ^ (new.not == 1)),
             },
-            Binary { op, left, right } => {
-                let left = left.simplify();
-                let right = right.simplify();
-                match op {
-                    And => Box::new(match (*left, *right) {
-                        (Const(false), _) | (_, Const(false)) => Const(false),
-                        (Const(true), right) => right,
-                        (left, Const(true)) => left,
-                        (left, right) => {
-                            if left.equals(&right) {
-                                left
-                            } else {
-                                Binary {
-                                    op,
-                                    left: Box::new(left),
-                                    right: Box::new(right),
-                                }
-                            }
+            Var(_) => new,
+            Binary { op, children } => {
+                let mut new_children = Vec::new();
+                for child in children.clone() {
+                    if let Binary { op: o, children: c } = child.clone().simplify().literal {
+                        if op == o {
+                            new_children.extend(c);
+                        } else {
+                            new_children.push(child.simplify());
                         }
-                    }),
-                    Or => Box::new(match (*left, *right) {
-                        (Const(true), _) | (_, Const(true)) => Const(true),
-                        (Const(false), right) => right,
-                        (left, Const(false)) => left,
-                        (left, right) => {
-                            if left.equals(&right) {
-                                left
-                            } else {
-                                Binary {
-                                    op,
-                                    left: Box::new(left),
-                                    right: Box::new(right),
-                                }
-                            }
-                        }
-                    }),
-                    Xor => Box::new(match (*left, *right) {
-                        (Const(a), Const(b)) => Const(a ^ b),
-                        (Const(false), right) => right,
-                        (left, Const(false)) => left,
-                        (Const(true), right) => *(!right),
-                        (left, Const(true)) => *(!left),
-                        (left, right) => {
-                            if left.equals(&right) {
-                                Const(false)
-                            } else {
-                                Binary {
-                                    op,
-                                    left: Box::new(left),
-                                    right: Box::new(right),
-                                }
-                            }
-                        }
-                    }),
-                    Leq => Box::new(match (*left, *right) {
-                        (Const(a), Const(b)) => Const(a == b),
-                        (Const(false), right) => *(!right),
-                        (left, Const(false)) => *(!left),
-                        (Const(true), right) => right,
-                        (left, Const(true)) => left,
-                        (left, right) => {
-                            if left.equals(&right) {
-                                Const(true)
-                            } else {
-                                Binary {
-                                    op,
-                                    left: Box::new(left),
-                                    right: Box::new(right),
-                                }
-                            }
-                        }
-                    }),
-                    Impl => Box::new(match (*left, *right) {
-                        (Const(false), _) | (_, Const(true)) => Const(true),
-                        (Const(true), right) => right,
-                        (left, Const(false)) => *(!left),
-                        (left, right) => {
-                            if left.equals(&right) {
-                                Const(true)
-                            } else {
-                                Binary {
-                                    op,
-                                    left: Box::new(left),
-                                    right: Box::new(right),
-                                }
-                            }
-                        }
-                    }),
+                    } else {
+                        new_children.push(child.simplify());
+                    }
                 }
+                println!("children: {:?}", children);
+                let mut children = new_children;
+                for i in 0..children.len() {
+                    for j in (i + 1)..children.len() {
+                        if children.get(j).is_none() {
+                            continue;
+                        }
+                        if let NodeCmp::Equal = children[i].compare(&children[j]) {
+                            children.remove(j);
+                        }
+                    }
+                }
+                println!("new children: {:?}", children);
+                let mut new_children: Vec<Node> = Vec::new();
+                match op {
+                    And => {
+                        // iterate through children, while removing duplicates
+                        // if any are false, return false
+                        // if any are true, remove them
+                        // if there are conflicting children, return false
+                        for child in &children {
+                            if let Const(c) = child.literal {
+                                if c ^ (child.not == 1) {
+                                    continue;
+                                }
+                                return Node {
+                                    not: 0,
+                                    literal: Const(false),
+                                };
+                            }
+                            let mut to_add = true;
+                            for new_child in &new_children {
+                                match child.compare(new_child) {
+                                    NodeCmp::Equal => {
+                                        to_add = false;
+                                        break;
+                                    }
+                                    NodeCmp::Opposite => {
+                                        return Node {
+                                            not: 0,
+                                            literal: Const(false),
+                                        };
+                                    }
+                                    NodeCmp::NotEqual => {}
+                                }
+                            }
+                            if to_add {
+                                new_children.push(child.clone());
+                            }
+                        }
+                        match new_children.len() {
+                            0 => Node {
+                                not: 0,
+                                literal: Const(true),
+                            },
+                            1 => new_children[0].clone(),
+                            _ => Node {
+                                not: 0,
+                                literal: Binary {
+                                    op: And,
+                                    children: new_children,
+                                },
+                            },
+                        }
+                    }
+                    Or => {
+                        // iterate through children, while removing duplicates
+                        // if any are true, return true
+                        // if any are false, remove them
+                        // if there are conflicting children, return true
+                        for child in &children {
+                            if let Const(c) = child.literal {
+                                if c ^ (child.not == 1) {
+                                    return Node {
+                                        not: 0,
+                                        literal: Const(true),
+                                    };
+                                }
+                                continue;
+                            }
+                            let mut to_add = true;
+                            for new_child in &new_children {
+                                match child.compare(new_child) {
+                                    NodeCmp::Equal => {
+                                        to_add = false;
+                                        break;
+                                    }
+                                    NodeCmp::Opposite => {
+                                        return Node {
+                                            not: 0,
+                                            literal: Const(true),
+                                        };
+                                    }
+                                    NodeCmp::NotEqual => {}
+                                }
+                            }
+                            if to_add {
+                                new_children.push(child.clone());
+                            }
+                        }
+                        match new_children.len() {
+                            0 => Node {
+                                not: 0,
+                                literal: Const(false),
+                            },
+                            1 => new_children[0].clone(),
+                            _ => Node {
+                                not: 0,
+                                literal: Binary {
+                                    op: Or,
+                                    children: new_children,
+                                },
+                            },
+                        }
+                    }
+                    Xor => {
+                        // Xor is not associative, so it's a bit different here
+                        // it should only have two children
+                        // if they are equal, return false
+                        // if they are opposite, return true
+                        // if one is true, return the other negated
+                        // if one is false, return the other
+                        // otherwise, return the xor of the two
+                        todo!();
+                    }
+                    Impl => todo!(),
+                    Leq => todo!(),
+                }
+                // match op {
+                //     And => Box::new(match (*left, *right) {
+                //         (Const(false), _) | (_, Const(false)) => Const(false),
+                //         (Const(true), right) => right,
+                //         (left, Const(true)) => left,
+                //         (left, right) => {
+                //             if left.equals(&right) {
+                //                 left
+                //             } else {
+                //                 Binary {
+                //                     op,
+                //                     left: Box::new(left),
+                //                     right: Box::new(right),
+                //                 }
+                //             }
+                //         }
+                //     }),
+                //     Or => Box::new(match (*left, *right) {
+                //         (Const(true), _) | (_, Const(true)) => Const(true),
+                //         (Const(false), right) => right,
+                //         (left, Const(false)) => left,
+                //         (left, right) => {
+                //             if left.equals(&right) {
+                //                 left
+                //             } else {
+                //                 Binary {
+                //                     op,
+                //                     left: Box::new(left),
+                //                     right: Box::new(right),
+                //                 }
+                //             }
+                //         }
+                //     }),
+                //     Xor => Box::new(match (*left, *right) {
+                //         (Const(a), Const(b)) => Const(a ^ b),
+                //         (Const(false), right) => right,
+                //         (left, Const(false)) => left,
+                //         (Const(true), right) => *(!right),
+                //         (left, Const(true)) => *(!left),
+                //         (left, right) => {
+                //             if left.equals(&right) {
+                //                 Const(false)
+                //             } else {
+                //                 Binary {
+                //                     op,
+                //                     left: Box::new(left),
+                //                     right: Box::new(right),
+                //                 }
+                //             }
+                //         }
+                //     }),
+                //     Leq => Box::new(match (*left, *right) {
+                //         (Const(a), Const(b)) => Const(a == b),
+                //         (Const(false), right) => *(!right),
+                //         (left, Const(false)) => *(!left),
+                //         (Const(true), right) => right,
+                //         (left, Const(true)) => left,
+                //         (left, right) => {
+                //             if left.equals(&right) {
+                //                 Const(true)
+                //             } else {
+                //                 Binary {
+                //                     op,
+                //                     left: Box::new(left),
+                //                     right: Box::new(right),
+                //                 }
+                //             }
+                //         }
+                //     }),
+                //     Impl => Box::new(match (*left, *right) {
+                //         (Const(false), _) | (_, Const(true)) => Const(true),
+                //         (Const(true), right) => right,
+                //         (left, Const(false)) => *(!left),
+                //         (left, right) => {
+                //             if left.equals(&right) {
+                //                 Const(true)
+                //             } else {
+                //                 Binary {
+                //                     op,
+                //                     left: Box::new(left),
+                //                     right: Box::new(right),
+                //                 }
+                //             }
+                //         }
+                //     }),
+                // }
             }
         }
     }

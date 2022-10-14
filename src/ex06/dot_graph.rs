@@ -1,8 +1,8 @@
 // prints a dot graph of the AST
 // use dot -Tsvg -o ex04.svg ex04.dot
 
+use crate::node::Literal::{Binary, Const, Var};
 use crate::node::Node;
-use crate::node::Node::*;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::Write;
@@ -67,7 +67,7 @@ fn get_idx(node: &Node, idx: &mut HashMap<char, usize>) -> String {
         *id += 1;
         s
     };
-    match node {
+    match &node.literal {
         Const(c) => {
             let id = get_id('c');
             format!("\"{}_{}\"", (*c as u8), id)
@@ -76,10 +76,6 @@ fn get_idx(node: &Node, idx: &mut HashMap<char, usize>) -> String {
             let v = v.get().name;
             let id = get_id(v);
             format!("\"{}_{}\"", v, id)
-        }
-        Not(..) => {
-            let id = get_id('!');
-            format!("\"!_{}\"", id)
         }
         Binary { op, .. } => {
             let id = get_id((*op).into());
@@ -90,25 +86,21 @@ fn get_idx(node: &Node, idx: &mut HashMap<char, usize>) -> String {
 
 fn print_dot_node(dot: &mut String, node: &Node, idx: &mut HashMap<char, usize>) -> String {
     let id = get_idx(node, idx);
-    match node {
+    let nots = "!".repeat(node.not);
+    match &node.literal {
         Const(c) => {
-            dot.push_str(&format!("\t{} [label=\"{}\"];\n", id, (*c as u8)));
+            dot.push_str(&format!("\t{} [label=\"{}{}\"];\n", id, nots, (*c as u8)));
         }
         Var(v) => {
             let v = v.get().name;
-            dot.push_str(&format!("\t{} [label=\"{}\"];\n", id, v));
+            dot.push_str(&format!("\t{} [label=\"{}{}\"];\n", id, nots, v));
         }
-        Binary { op, left, right } => {
-            dot.push_str(&format!("\t{} [label=\"{}\"];\n", id, op));
-            let left_id = print_dot_node(dot, left, idx);
-            dot.push_str(&format!("\t{} -> {};\n", id, left_id));
-            let right_id = print_dot_node(dot, right, idx);
-            dot.push_str(&format!("\t{} -> {};\n", id, right_id));
-        }
-        Not(operand) => {
-            dot.push_str(&format!("\t{} [label=\"!\"];\n", id));
-            let operand_id = print_dot_node(dot, operand, idx);
-            dot.push_str(&format!("\t{} -> {};\n", id, operand_id));
+        Binary { op, children } => {
+            dot.push_str(&format!("\t{} [label=\"{}{}\"];\n", id, nots, op));
+            for child in children {
+                let child_id = print_dot_node(dot, child, idx);
+                dot.push_str(&format!("\t{} -> {};\n", id, child_id));
+            }
         }
     }
     id
