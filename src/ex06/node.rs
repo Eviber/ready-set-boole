@@ -5,7 +5,7 @@ use BinOp::*;
 use Literal::*;
 use ParseError::*;
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum BinOp {
     And,
     Or,
@@ -14,25 +14,97 @@ pub enum BinOp {
     Leq,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Eq)]
 pub struct Variable {
     pub name: char,
     pub value: bool,
 }
 
+impl PartialEq for Variable {
+    fn eq(&self, other: &Variable) -> bool {
+        self.name == other.name
+    }
+}
+
 pub type VarCell = Rc<Cell<Variable>>;
 
-#[derive(Clone)]
+#[derive(Clone, Eq)]
 pub enum Literal {
     Binary { op: BinOp, children: Vec<Node> },
     Var(VarCell),
     Const(bool),
 }
 
-#[derive(Clone)]
+impl PartialEq for Literal {
+    fn eq(&self, other: &Literal) -> bool {
+        match (self, other) {
+            (
+                Binary { op, children },
+                Binary {
+                    op: op2,
+                    children: children2,
+                },
+            ) => {
+                // sort childrens to compare them
+                let mut children = children.clone();
+                let mut children2 = children2.clone();
+                children.sort();
+                children2.sort();
+                op == op2 && children == children2
+            }
+            (Var(var1), Var(var2)) => var1.get().name == var2.get().name,
+            (Const(b1), Const(b2)) => b1 == b2,
+            _ => false,
+        }
+    }
+}
+
+impl PartialOrd for Literal {
+    fn partial_cmp(&self, other: &Literal) -> Option<std::cmp::Ordering> {
+        match (self, other) {
+            (
+                Binary { op, children },
+                Binary {
+                    op: op2,
+                    children: children2,
+                },
+            ) => {
+                // sort childrens to compare them
+                let mut children = children.clone();
+                let mut children2 = children2.clone();
+                children.sort();
+                children2.sort();
+                match op.cmp(op2) {
+                    std::cmp::Ordering::Equal => children.partial_cmp(&children2),
+                    ord => Some(ord),
+                }
+            }
+            (Var(var1), Var(var2)) => var1.get().name.partial_cmp(&var2.get().name),
+            (Const(b1), Const(b2)) => b1.partial_cmp(b2),
+            _ => None,
+        }
+    }
+}
+
+impl Ord for Literal {
+    fn cmp(&self, other: &Literal) -> std::cmp::Ordering {
+        match self.partial_cmp(other) {
+            Some(ord) => ord,
+            None => std::cmp::Ordering::Equal,
+        }
+    }
+}
+
+#[derive(Clone, Eq, PartialOrd, Ord)]
 pub struct Node {
     pub not: usize,
     pub literal: Literal,
+}
+
+impl PartialEq for Node {
+    fn eq(&self, other: &Self) -> bool {
+        self.not == other.not && self.literal == other.literal
+    }
 }
 
 pub struct Tree {
@@ -227,62 +299,16 @@ enum NodeCmp {
 
 impl Node {
     fn compare(&self, other: &Node) -> NodeCmp {
-        match (&self.literal, &other.literal) {
-            (Var(v1), Var(v2)) => {
-                if v1.get().name == v2.get().name {
-                    if self.not == other.not {
-                        NodeCmp::Equal
-                    } else {
-                        NodeCmp::Opposite
-                    }
-                } else {
-                    NodeCmp::NotEqual
-                }
+        if self.not == other.not {
+            if self.literal == other.literal {
+                NodeCmp::Equal
+            } else {
+                NodeCmp::NotEqual
             }
-            (Const(c1), Const(c2)) => {
-                if c1 ^ (self.not % 2 == 1) == c2 ^ (other.not % 2 == 1) {
-                    NodeCmp::Equal
-                } else {
-                    NodeCmp::Opposite
-                }
-            }
-            (
-                Binary {
-                    op: op1,
-                    children: children1,
-                },
-                Binary {
-                    op: op2,
-                    children: children2,
-                },
-            ) => {
-                if op1 == op2 && children1.len() == children2.len() && self.not == other.not {
-                    let mut children1 = children1.clone();
-                    let mut children2 = children2.clone();
-                    let cmp = |a: &Node, b: &Node| {
-                        if let Var(v1) = &a.literal {
-                            if let Var(v2) = &b.literal {
-                                if v1.get().name == v2.get().name {
-                                    return a.not < b.not;
-                                }
-                                return v1.get().name < v2.get().name;
-                            }
-                        }
-                        false
-                    };
-                    children1.sort_by(|a, b| cmp(a, b).cmp(&false));
-                    children2.sort_by(|a, b| cmp(a, b).cmp(&false));
-                    for (a, b) in children1.iter().zip(children2.iter()) {
-                        if a.compare(b) != NodeCmp::Equal {
-                            return NodeCmp::NotEqual;
-                        }
-                    }
-                    NodeCmp::Equal
-                } else {
-                    NodeCmp::NotEqual
-                }
-            }
-            _ => NodeCmp::NotEqual,
+        } else if self.literal == other.literal {
+            NodeCmp::Opposite
+        } else {
+            NodeCmp::NotEqual
         }
     }
 }
@@ -399,7 +425,6 @@ impl Node {
                         new_children.push(child.simplify());
                     }
                 }
-                println!("children: {:?}", children);
                 let mut children = new_children;
                 for i in 0..children.len() {
                     for j in (i + 1)..children.len() {
@@ -411,7 +436,6 @@ impl Node {
                         }
                     }
                 }
-                println!("new children: {:?}", children);
                 let mut new_children: Vec<Node> = Vec::new();
                 match op {
                     And => {
