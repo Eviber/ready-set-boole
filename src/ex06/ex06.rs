@@ -1,5 +1,3 @@
-// an AST to parse logical expressions in rpn
-
 mod dot_graph;
 mod expr_generator;
 mod node;
@@ -17,7 +15,7 @@ struct Args {
 
 fn conjunctive_normal_form(formula: &str) -> String {
     match formula.parse::<Tree>() {
-        Ok(tree) => tree.root.cnf().simplify().to_string(),
+        Ok(tree) => tree.cnf().root.to_string(),
         Err(e) => format!("Error: {:?}", e),
     }
 }
@@ -69,72 +67,30 @@ fn main() -> Result<(), ParseError> {
         }
     };
     println!("Input:\n{}", expr);
-    let tree = expr.parse::<Tree>()?.root;
-    if dot {
-        create_graph(&tree, "ex06_in");
-        create_graph(&(tree.cnf().simplify()), "ex06_out");
-    }
-    println!("{}", conjunctive_normal_form(&expr));
+    let tree = expr.parse::<Tree>()?;
+    println!(
+        "{}",
+        if dot {
+            create_graph(&tree.root, "ex06_in");
+            let cnf = tree.cnf();
+            create_graph(&(cnf.root), "ex06_out");
+            cnf.root.to_string()
+        } else {
+            conjunctive_normal_form(&expr)
+        },
+    );
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::node::BinOp::*;
-    use crate::node::Node;
-    use crate::node::{Literal, Variable};
-    use crate::tests::Literal::{Binary, Const, Var};
+    use crate::node::*;
 
     #[allow(dead_code)]
     fn test_cnf(formula: &str, expected: &str) {
         let cnf = conjunctive_normal_form(formula);
         assert_eq!(cnf, expected, "formula: {}", formula);
-    }
-
-    #[allow(dead_code)]
-    fn get_table(input: &str, vars: &str) -> Vec<bool> {
-        let tree = input.parse::<Tree>().expect("input is valid");
-        let var_list: Vec<char> = ('A'..='Z').filter(|&c| vars.contains(c)).collect();
-        let mut res = Vec::with_capacity(1 << var_list.len());
-        for i in 0..(1 << var_list.len()) {
-            for (j, v) in var_list.iter().enumerate() {
-                let j = var_list.len() - j - 1;
-                let bit = (i >> j) & 1;
-                tree.set_var(*v, bit == 1);
-            }
-            res.push(tree.root.eval());
-        }
-        res
-    }
-
-    impl Tree {
-        #[allow(dead_code)]
-        fn set_var(&self, name: char, value: bool) {
-            self.variables[name as usize - 'A' as usize].set(Variable { name, value });
-        }
-    }
-
-    impl Node {
-        #[allow(dead_code)]
-        fn eval(&self) -> bool {
-            let res = match &self.literal {
-                Const(c) => *c,
-                Var(v) => v.get().value,
-                Binary { op, children } => {
-                    let left = children[0].eval();
-                    let right = children[1].eval();
-                    match op {
-                        And => left && right,
-                        Or => left || right,
-                        Impl => !left || right,
-                        Leq => left == right,
-                        Xor => left ^ right,
-                    }
-                }
-            };
-            res ^ (self.not % 2 == 1)
-        }
     }
 
     #[test]

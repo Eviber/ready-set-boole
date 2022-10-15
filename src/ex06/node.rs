@@ -313,69 +313,183 @@ impl Node {
     }
 }
 
+pub fn get_table(input: &str, vars: &str) -> Vec<bool> {
+    let tree = input.parse::<Tree>().expect("input is valid");
+    let var_list: Vec<char> = ('A'..='Z').filter(|&c| vars.contains(c)).collect();
+    let mut res = Vec::with_capacity(1 << var_list.len());
+    for i in 0..(1 << var_list.len()) {
+        for (j, v) in var_list.iter().enumerate() {
+            let j = var_list.len() - j - 1;
+            let bit = (i >> j) & 1;
+            tree.set_var(*v, bit == 1);
+        }
+        res.push(tree.root.eval());
+    }
+    res
+}
+
+impl Tree {
+    fn set_var(&self, name: char, value: bool) {
+        self.variables[name as usize - 'A' as usize].set(Variable { name, value });
+    }
+}
+
 impl Node {
-    pub fn cnf(self) -> Node {
-        let mut new = self.clone();
-        new.not = self.not % 2;
-        if new.not == 1 {
-            match new.literal {
-                Const(_) | Var(_) => new,
-                Binary { op, children } => {
-                    let left = children[0].clone();
-                    let right = children[1].clone();
-                    match op {
-                        // !(A & B) -> !A | !B
-                        And => (!left | !right).cnf(),
-                        // !(A | B) -> !A & !B
-                        Or => (!left & !right).cnf(),
-                        // !(A = B) -> A ^ B
-                        Leq => (left ^ right).cnf(),
-                        // !(A ^ B) -> A = B
-                        Xor => leq(left, right).cnf(),
-                        // !(A > B) -> A & !B
-                        Impl => (left & !right).cnf(),
-                    }
+    fn eval(&self) -> bool {
+        let res = match &self.literal {
+            Const(c) => *c,
+            Var(v) => v.get().value,
+            Binary { op, children } => {
+                let left = children[0].eval();
+                let right = children[1].eval();
+                match op {
+                    And => left && right,
+                    Or => left || right,
+                    Impl => !left || right,
+                    Leq => left == right,
+                    Xor => left ^ right,
                 }
             }
-        } else {
-            match new.literal {
-                Const(_) | Var(_) => new,
-                Binary { op, children } => {
-                    let left = children[0].clone();
-                    let right = children[1].clone();
-                    match op {
-                        // Xor -> (A | B) & (!A | !B)
-                        Xor => ((left.clone() | right.clone()) & (!left | !right)).cnf(),
-                        // Impl -> !A | B
-                        Impl => (!left | right).cnf(),
-                        // Leq == (A | !B) & (!A | B)
-                        Leq => ((left.clone() | !right.clone()) & (!left | right)).cnf(),
-                        And => left.cnf() & right.cnf(),
-                        Or => {
-                            // recurse first to bring up any ANDs
-                            let left = left.cnf();
-                            let right = right.cnf();
-                            if let Binary { op: And, children } = left.literal {
-                                // (A & B) | C -> (A | C) & (B | C)
-                                ((children[0].clone() | right.clone())
-                                    & (children[1].clone() | right))
-                                    .cnf()
-                            } else if let Binary { op: And, children } = right.literal {
-                                // A & (B | C) -> (A | B) & (A | C)
-                                ((left.clone() | children[0].clone())
-                                    & (left | children[1].clone()))
-                                .cnf()
+        };
+        res ^ (self.not % 2 == 1)
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum OptionBool {
+    True,
+    False,
+    DontCare,
+}
+
+impl fmt::Debug for OptionBool {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            OptionBool::True => write!(f, "1"),
+            OptionBool::False => write!(f, "0"),
+            OptionBool::DontCare => write!(f, "-"),
+        }
+    }
+}
+
+impl Tree {
+    pub fn cnf(&self) -> Tree {
+        // Using the Quine-McCluskey algorithm
+        // https://en.wikipedia.org/wiki/Quine%E2%80%93McCluskey_algorithm
+        // https://electronics.stackexchange.com/questions/520513/can-quine-mccluskey-method-be-used-for-product-of-sum-simplification
+
+        // Step 1: generate truth table
+        let expr = self.root.to_string();
+        let table = get_table(&expr, &expr);
+        let bit_width = (table.len() - 1).count_ones() as usize;
+        println!("table: {:?}", table);
+        println!("bit_width: {}", bit_width);
+        // we only need to look at the zero rows
+        let false_rows: Vec<usize> = table
+            .iter()
+            .enumerate()
+            .filter(|(_, &b)| !b)
+            .map(|(i, _)| i)
+            .collect();
+        println!("false_rows: {:?}", false_rows);
+        // Step 2: sort rows by number of 0s, from least to most
+        let groups: Vec<Vec<Vec<OptionBool>>> = (0..=bit_width)
+            .map(|i| {
+                false_rows
+                    .iter()
+                    .rev()
+                    .filter(|r| r.count_ones() as usize == bit_width - i)
+                    .map(|&r| {
+                        let mut v = Vec::with_capacity(bit_width);
+                        for j in 0..bit_width {
+                            v.push(if (r >> j) & 1 == 1 {
+                                OptionBool::True
                             } else {
-                                // if neither left nor right is an And, we're done
-                                left | right
+                                OptionBool::False
+                            });
+                        }
+                        v
+                    })
+                    .collect()
+            })
+            .collect();
+        println!("groups: {:?}", groups);
+        // Step 3: generate prime implicants by combining rows
+        let mut prime_implicants = loop {
+            let mut prime_implicants = Vec::new();
+            let mut stop = true;
+            for i in 0..groups.len() - 1 {
+                let mut new_prime_implicants: Vec<Vec<OptionBool>> = Vec::new();
+                for j in 0..groups[i].len() {
+                    for k in 0..groups[i + 1].len() {
+                        let mut diff = 0;
+                        let mut diff_index = 0;
+                        for l in 0..groups[i][j].len() {
+                            if groups[i][j][l] != groups[i + 1][k][l] {
+                                diff += 1;
+                                diff_index = l;
                             }
+                        }
+                        if diff == 1 {
+                            let mut new_prime_implicant = groups[i][j].clone();
+                            new_prime_implicant[diff_index] = OptionBool::DontCare;
+                            new_prime_implicants.push(new_prime_implicant);
+                            stop = false;
                         }
                     }
                 }
+                prime_implicants.append(&mut new_prime_implicants);
             }
+            if stop {
+                break prime_implicants;
+            }
+            groups = prime_implicants;
+        };
+        println!("prime_implicants: {:?}", prime_implicants);
+        // Step 4: remove redundant prime implicants
+        let mut essential_prime_implicants: Vec<Vec<OptionBool>> = Vec::new();
+        while !prime_implicants.is_empty() {
+            let mut new_prime_implicants: Vec<Vec<OptionBool>> = Vec::new();
+            for i in 0..prime_implicants.len() {
+                let mut covered = false;
+                for j in 0..prime_implicants.len() {
+                    if i == j {
+                        continue;
+                    }
+                    let mut covered_count = 0;
+                    for k in 0..prime_implicants[i].len() {
+                        if prime_implicants[i][k] == OptionBool::DontCare
+                            || prime_implicants[j][k] == OptionBool::DontCare
+                        {
+                            continue;
+                        }
+                        if prime_implicants[i][k] == prime_implicants[j][k] {
+                            covered_count += 1;
+                        }
+                    }
+                    if covered_count == prime_implicants[i].len() {
+                        covered = true;
+                        break;
+                    }
+                }
+                if !covered {
+                    essential_prime_implicants.push(prime_implicants[i].clone());
+                } else {
+                    new_prime_implicants.push(prime_implicants[i].clone());
+                }
+            }
+            prime_implicants = new_prime_implicants;
         }
+        println!(
+            "essential_prime_implicants: {:?}",
+            essential_prime_implicants
+        );
+        // Step 5: generate final expression
+        todo!()
     }
+}
 
+impl Node {
     // fn equals(&self, other: &Node) -> bool {
     //     match (self, other) {
     //         (Const(a), Const(b)) => a == b,
@@ -414,7 +528,7 @@ impl Node {
             Var(_) => new,
             Binary { op, children } => {
                 let mut new_children = Vec::new();
-                for child in children.clone() {
+                for child in children {
                     if let Binary { op: o, children: c } = child.clone().simplify().literal {
                         if op == o {
                             new_children.extend(c);
