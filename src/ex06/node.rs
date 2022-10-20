@@ -313,9 +313,9 @@ impl Node {
     }
 }
 
-pub fn get_table(input: &str, vars: &str) -> Vec<bool> {
+pub fn get_table(input: &str, expr: &str) -> Vec<bool> {
     let tree = input.parse::<Tree>().expect("input is valid");
-    let var_list: Vec<char> = ('A'..='Z').filter(|&c| vars.contains(c)).collect();
+    let var_list: Vec<char> = ('A'..='Z').filter(|&c| expr.contains(c)).collect();
     let mut res = Vec::with_capacity(1 << var_list.len());
     for i in 0..(1 << var_list.len()) {
         for (j, v) in var_list.iter().enumerate() {
@@ -355,10 +355,10 @@ impl Node {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum OptionBool {
-    True,
     False,
+    True,
     DontCare,
 }
 
@@ -380,142 +380,126 @@ impl Tree {
 
         // Step 1: generate truth table
         let expr = self.root.to_string();
+        let var_list: Vec<char> = ('A'..='Z').filter(|&c| expr.contains(c)).collect();
         let table = get_table(&expr, &expr);
         let bit_width = (table.len() - 1).count_ones() as usize;
-        println!("table: {:?}", table);
-        println!("bit_width: {}", bit_width);
         // we only need to look at the zero rows
-        let false_rows: Vec<usize> = table
+        let false_rows: Vec<Vec<OptionBool>> = table
             .iter()
             .enumerate()
             .filter(|(_, &b)| !b)
-            .map(|(i, _)| i)
-            .collect();
-        println!("false_rows: {:?}", false_rows);
-        // Step 2: sort rows by number of 0s, from least to most
-        let groups: Vec<Vec<Vec<OptionBool>>> = (0..=bit_width)
-            .map(|i| {
-                false_rows
-                    .iter()
-                    .rev()
-                    .filter(|r| r.count_ones() as usize == bit_width - i)
-                    .map(|&r| {
-                        let mut v = Vec::with_capacity(bit_width);
-                        for j in 0..bit_width {
-                            v.push(if (r >> j) & 1 == 1 {
-                                OptionBool::True
-                            } else {
-                                OptionBool::False
-                            });
-                        }
-                        v
-                    })
-                    .collect()
+            .map(|(i, _)| {
+                let mut row = Vec::with_capacity(bit_width);
+                for j in 0..bit_width {
+                    let bit = (i >> (bit_width - j - 1)) & 1;
+                    row.push(if bit == 1 {
+                        OptionBool::True
+                    } else {
+                        OptionBool::False
+                    });
+                }
+                row
             })
             .collect();
-        println!("groups: {:?}", groups);
-        // Step 3: generate prime implicants by combining rows
-        let mut prime_implicants = loop {
-            let mut prime_implicants = Vec::new();
-            let mut stop = true;
-            for i in 0..groups.len() - 1 {
-                let mut new_prime_implicants: Vec<Vec<OptionBool>> = Vec::new();
-                for j in 0..groups[i].len() {
-                    for k in 0..groups[i + 1].len() {
-                        let mut diff = 0;
-                        let mut diff_index = 0;
-                        for l in 0..groups[i][j].len() {
-                            if groups[i][j][l] != groups[i + 1][k][l] {
-                                diff += 1;
-                                diff_index = l;
-                            }
-                        }
-                        if diff == 1 {
-                            let mut new_prime_implicant = groups[i][j].clone();
-                            new_prime_implicant[diff_index] = OptionBool::DontCare;
-                            new_prime_implicants.push(new_prime_implicant);
-                            stop = false;
-                        }
-                    }
-                }
-                prime_implicants.append(&mut new_prime_implicants);
-            }
-            if stop {
-                break prime_implicants;
-            }
-            groups = prime_implicants;
-        };
-        println!("prime_implicants: {:?}", prime_implicants);
-        // Step 4: remove redundant prime implicants
-        let mut essential_prime_implicants: Vec<Vec<OptionBool>> = Vec::new();
-        while !prime_implicants.is_empty() {
-            let mut new_prime_implicants: Vec<Vec<OptionBool>> = Vec::new();
-            for i in 0..prime_implicants.len() {
-                let mut covered = false;
-                for j in 0..prime_implicants.len() {
-                    if i == j {
-                        continue;
-                    }
-                    let mut covered_count = 0;
-                    for k in 0..prime_implicants[i].len() {
-                        if prime_implicants[i][k] == OptionBool::DontCare
-                            || prime_implicants[j][k] == OptionBool::DontCare
-                        {
-                            continue;
-                        }
-                        if prime_implicants[i][k] == prime_implicants[j][k] {
-                            covered_count += 1;
-                        }
-                    }
-                    if covered_count == prime_implicants[i].len() {
-                        covered = true;
-                        break;
-                    }
-                }
-                if !covered {
-                    essential_prime_implicants.push(prime_implicants[i].clone());
-                } else {
-                    new_prime_implicants.push(prime_implicants[i].clone());
-                }
-            }
-            prime_implicants = new_prime_implicants;
+        if false_rows.is_empty() || false_rows.len() == 1 << var_list.len() {
+            // all true or all false
+            return Tree {
+                root: Node {
+                    not: 0,
+                    literal: Const(false_rows.is_empty()),
+                },
+                variables: self.variables.clone(),
+            };
         }
-        println!(
-            "essential_prime_implicants: {:?}",
-            essential_prime_implicants
-        );
-        // Step 5: generate final expression
-        todo!()
+        // Step 2: generate prime implicants by combining rows
+        let mut prime_implicants = Vec::new();
+        let mut done = false;
+        let mut implicants = false_rows;
+        while !done {
+            done = true;
+            let mut new_implicants = Vec::new();
+            let mut used = vec![false; implicants.len()];
+            for i in 0..implicants.len() {
+                let mut found = false;
+                for j in i + 1..implicants.len() {
+                    let mut diff = 0;
+                    let mut diff_index = 0;
+                    for k in 0..bit_width {
+                        if implicants[i][k] != implicants[j][k] {
+                            if diff == 1
+                                || implicants[i][k] == OptionBool::DontCare
+                                || implicants[j][k] == OptionBool::DontCare
+                            {
+                                diff = 2;
+                                break;
+                            }
+                            diff += 1;
+                            diff_index = k;
+                        }
+                    }
+                    if diff == 1 {
+                        found = true;
+                        used[j] = true;
+                        let mut new_implicant = implicants[i].clone();
+                        new_implicant[diff_index] = OptionBool::DontCare;
+                        new_implicants.push(new_implicant);
+                    }
+                }
+                if found {
+                    done = false;
+                } else if !used[i] {
+                    prime_implicants.push(implicants[i].clone());
+                }
+            }
+            implicants = new_implicants;
+        }
+        prime_implicants.sort();
+        prime_implicants.dedup();
+        let mut res: Vec<String> = Vec::new();
+        for implicant in prime_implicants.iter() {
+            let mut or_needed = 0;
+            let mut s = String::new();
+            for (j, bit) in implicant.iter().enumerate() {
+                match bit {
+                    // here we invert the bits because we're looking at the zero rows
+                    OptionBool::False => {
+                        s.push(var_list[j]);
+                        or_needed += 1;
+                    }
+                    OptionBool::True => {
+                        s.push(var_list[j]);
+                        s.push('!');
+                        or_needed += 1;
+                    }
+                    OptionBool::DontCare => {}
+                }
+            }
+            for _ in 0..or_needed - 1 {
+                s.push('|');
+            }
+            res.push(s);
+        }
+        res.sort();
+        println!("{:?}", res);
+        let mut res: String = res.concat();
+        for _ in 0..prime_implicants.len() - 1 {
+            res.push('&');
+        }
+        res.parse().unwrap() // should never fail
     }
 }
 
 impl Node {
-    // fn equals(&self, other: &Node) -> bool {
-    //     match (self, other) {
-    //         (Const(a), Const(b)) => a == b,
-    //         (Var(a), Var(b)) => a.get().name == b.get().name,
-    //         (
-    //             Binary { op, left, right },
-    //             Binary {
-    //                 op: o,
-    //                 left: l,
-    //                 right: r,
-    //             },
-    //         ) => {
-    //             if op == o {
-    //                 if op == &Impl {
-    //                     left.equals(l) && right.equals(r)
-    //                 } else {
-    //                     left.equals(l) && right.equals(r) || (left.equals(r) && right.equals(l))
-    //                 }
-    //             } else {
-    //                 false
-    //             }
-    //         }
-    //         (Not(a), Not(b)) => a.equals(b),
-    //         _ => false,
-    //     }
-    // }
+    fn not(&mut self) -> &mut Self {
+        self.not = (self.not + 1) % 2;
+        if self.not == 1 {
+            if let Const(c) = &mut self.literal {
+                *c = !*c;
+                self.not = 0;
+            }
+        }
+        self
+    }
 
     pub fn simplify(self) -> Node {
         let mut new = self.clone();
@@ -528,25 +512,27 @@ impl Node {
             Var(_) => new,
             Binary { op, children } => {
                 let mut new_children = Vec::new();
-                for child in children {
-                    if let Binary { op: o, children: c } = child.clone().simplify().literal {
-                        if op == o {
-                            new_children.extend(c);
+                if op == Or || op == And {
+                    for child in &children {
+                        if let Binary { op: o, children: c } = child.clone().simplify().literal {
+                            if op == o {
+                                new_children.extend(c);
+                            } else {
+                                new_children.push(child.clone().simplify());
+                            }
                         } else {
-                            new_children.push(child.simplify());
+                            new_children.push(child.clone().simplify());
                         }
-                    } else {
-                        new_children.push(child.simplify());
                     }
-                }
-                let mut children = new_children;
-                for i in 0..children.len() {
-                    for j in (i + 1)..children.len() {
-                        if children.get(j).is_none() {
-                            continue;
-                        }
-                        if let NodeCmp::Equal = children[i].compare(&children[j]) {
-                            children.remove(j);
+                    let mut children = new_children;
+                    for i in 0..children.len() {
+                        for j in (i + 1)..children.len() {
+                            if children.get(j).is_none() {
+                                continue;
+                            }
+                            if let NodeCmp::Equal = children[i].compare(&children[j]) {
+                                children.remove(j);
+                            }
                         }
                     }
                 }
@@ -660,97 +646,131 @@ impl Node {
                         // if one is true, return the other negated
                         // if one is false, return the other
                         // otherwise, return the xor of the two
-                        todo!();
+                        if children.len() != 2 {
+                            panic!("Xor should only have two children");
+                        }
+                        match children[0].compare(&children[1]) {
+                            NodeCmp::Equal => Node {
+                                not: 0,
+                                literal: Const(false),
+                            },
+                            NodeCmp::Opposite => Node {
+                                not: 0,
+                                literal: Const(true),
+                            },
+                            NodeCmp::NotEqual => {
+                                match (children[0].literal, children[1].literal) {
+                                    (Const(c), _) | (_, Const(c)) => {
+                                        if c ^ (children[0].not == 1) {
+                                            children[1].clone().not()
+                                        } else {
+                                            children[0].clone()
+                                        }
+                                    }
+                                    _ => new,
+                                };
+                                if let Const(c) = children[0].literal {
+                                    let mut new = children[1].clone();
+                                    new.not().simplify()
+                                } else if let Const(c) = children[1].literal {
+                                    let mut new = children[0].clone();
+                                    new.not().simplify()
+                                } else {
+                                    self
+                                }
+                            }
+                        }
                     }
-                    Impl => todo!(),
-                    Leq => todo!(),
+                    Impl => {
+                        // Impl is not associative, so it's a bit different here
+                        // it should only have two children
+                        // if the first is true, return the second
+                        // if the first is false, return true
+                        // if the second is true, return true
+                        // if the second is false, return the first negated
+                        // otherwise, return the impl of the two
+                        if children.len() != 2 {
+                            panic!("Impl should only have two children");
+                        }
+                        match children[0].compare(&children[1]) {
+                            NodeCmp::Equal => Node {
+                                not: 0,
+                                literal: Const(true),
+                            },
+                            NodeCmp::Opposite => {
+                                let mut new = children[0].clone();
+                                new.not = (new.not + 1) % 2;
+                                new.simplify()
+                            }
+                            NodeCmp::NotEqual => {
+                                if let Const(c) = children[0].literal {
+                                    if c ^ (children[0].not == 1) {
+                                        children[1].clone()
+                                    } else {
+                                        Node {
+                                            not: 0,
+                                            literal: Const(true),
+                                        }
+                                    }
+                                } else if let Const(c) = children[1].literal {
+                                    if c ^ (children[1].not == 1) {
+                                        Node {
+                                            not: 0,
+                                            literal: Const(true),
+                                        }
+                                    } else {
+                                        let mut new = children[0].clone();
+                                        new.not = (new.not + 1) % 2;
+                                        new.simplify()
+                                    }
+                                } else {
+                                    self
+                                }
+                            }
+                        }
+                    }
+                    Leq => {
+                        // Leq is not associative, so it's a bit different here
+                        // it should only have two children
+                        // if they are equal, return true
+                        // if they are opposite, return false
+                        // if one is true, return the other
+                        // if one is false, return the other negated
+                        // otherwise, return the leq of the two
+                        if children.len() != 2 {
+                            panic!("Leq should only have two children");
+                        }
+                        match children[0].compare(&children[1]) {
+                            NodeCmp::Equal => Node {
+                                not: 0,
+                                literal: Const(true),
+                            },
+                            NodeCmp::Opposite => Node {
+                                not: 0,
+                                literal: Const(false),
+                            },
+                            NodeCmp::NotEqual => {
+                                if let Const(c) = children[0].literal {
+                                    if c ^ (children[0].not == 1) {
+                                    } else {
+                                        children[1].clone()
+                                    }
+                                } else if let Const(c) = children[1].literal {
+                                    if c ^ (children[1].not == 1) {
+                                        children[0].clone()
+                                    } else {
+                                        Node {
+                                            not: 0,
+                                            literal: Const(false),
+                                        }
+                                    }
+                                } else {
+                                    self
+                                }
+                            }
+                        }
+                    }
                 }
-                // match op {
-                //     And => Box::new(match (*left, *right) {
-                //         (Const(false), _) | (_, Const(false)) => Const(false),
-                //         (Const(true), right) => right,
-                //         (left, Const(true)) => left,
-                //         (left, right) => {
-                //             if left.equals(&right) {
-                //                 left
-                //             } else {
-                //                 Binary {
-                //                     op,
-                //                     left: Box::new(left),
-                //                     right: Box::new(right),
-                //                 }
-                //             }
-                //         }
-                //     }),
-                //     Or => Box::new(match (*left, *right) {
-                //         (Const(true), _) | (_, Const(true)) => Const(true),
-                //         (Const(false), right) => right,
-                //         (left, Const(false)) => left,
-                //         (left, right) => {
-                //             if left.equals(&right) {
-                //                 left
-                //             } else {
-                //                 Binary {
-                //                     op,
-                //                     left: Box::new(left),
-                //                     right: Box::new(right),
-                //                 }
-                //             }
-                //         }
-                //     }),
-                //     Xor => Box::new(match (*left, *right) {
-                //         (Const(a), Const(b)) => Const(a ^ b),
-                //         (Const(false), right) => right,
-                //         (left, Const(false)) => left,
-                //         (Const(true), right) => *(!right),
-                //         (left, Const(true)) => *(!left),
-                //         (left, right) => {
-                //             if left.equals(&right) {
-                //                 Const(false)
-                //             } else {
-                //                 Binary {
-                //                     op,
-                //                     left: Box::new(left),
-                //                     right: Box::new(right),
-                //                 }
-                //             }
-                //         }
-                //     }),
-                //     Leq => Box::new(match (*left, *right) {
-                //         (Const(a), Const(b)) => Const(a == b),
-                //         (Const(false), right) => *(!right),
-                //         (left, Const(false)) => *(!left),
-                //         (Const(true), right) => right,
-                //         (left, Const(true)) => left,
-                //         (left, right) => {
-                //             if left.equals(&right) {
-                //                 Const(true)
-                //             } else {
-                //                 Binary {
-                //                     op,
-                //                     left: Box::new(left),
-                //                     right: Box::new(right),
-                //                 }
-                //             }
-                //         }
-                //     }),
-                //     Impl => Box::new(match (*left, *right) {
-                //         (Const(false), _) | (_, Const(true)) => Const(true),
-                //         (Const(true), right) => right,
-                //         (left, Const(false)) => *(!left),
-                //         (left, right) => {
-                //             if left.equals(&right) {
-                //                 Const(true)
-                //             } else {
-                //                 Binary {
-                //                     op,
-                //                     left: Box::new(left),
-                //                     right: Box::new(right),
-                //                 }
-                //             }
-                //         }
-                //     }),
-                // }
             }
         }
     }

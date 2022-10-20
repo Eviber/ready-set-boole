@@ -99,10 +99,10 @@ mod tests {
         test_cnf("AB&!", "A!B!|");
         test_cnf("AB|!", "A!B!&");
         test_cnf("AB|C&", "AB|C&");
-        // test_cnf("AB|C|D|", "ABCD|||");
-        // test_cnf("AB&C&D&", "ABCD&&&");
-        test_cnf("AB&!C!|", "A!B!|C!|");
-        test_cnf("AB|!C!&", "A!B!&C!&");
+        test_cnf("AB|C|D|", "ABCD|||");
+        test_cnf("AB&C&D&", "ABCD&&&");
+        test_cnf("AB&!C!|", "A!B!C!||");
+        test_cnf("AB|!C!&", "A!B!C!&&");
     }
 
     #[test]
