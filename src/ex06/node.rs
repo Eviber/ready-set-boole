@@ -372,6 +372,84 @@ impl fmt::Debug for OptionBool {
     }
 }
 
+impl From<bool> for OptionBool {
+    fn from(b: bool) -> Self {
+        if b {
+            OptionBool::True
+        } else {
+            OptionBool::False
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+struct Row {
+    values: Vec<OptionBool>,
+    id: Vec<usize>,
+}
+
+impl From<&Row> for u32 {
+    fn from(row: &Row) -> Self {
+        row.values.iter().rev().fold(0, |acc, x| {
+            (acc << 1)
+                | match x {
+                    OptionBool::True => 1,
+                    _ => 0,
+                }
+        })
+    }
+}
+
+impl Row {
+    fn new(id: usize, width: usize) -> Row {
+        let mut values = vec![OptionBool::False; width];
+        (0..width).for_each(|i| {
+            values[i] = OptionBool::from((id >> (width - i - 1)) & 1 == 1);
+        });
+        Row {
+            values,
+            id: vec![id],
+        }
+    }
+
+    /// get a bitfield for the care bits
+    fn care(&self) -> u32 {
+        let mut res = 0;
+        for (i, v) in self.values.iter().enumerate() {
+            if *v != OptionBool::DontCare {
+                res |= 1 << (self.values.len() - i - 1);
+            }
+        }
+        res
+    }
+
+    /// get the bit difference between two rows
+    fn diff(&self, other: &Row) -> u32 {
+        u32::from(self) ^ u32::from(other)
+    }
+
+    /// mark the desired bits as dont care
+    fn mark(&mut self, mask: u32) {
+        for (i, v) in self.values.iter_mut().enumerate().rev() {
+            if (mask >> i) & 1 == 1 {
+                *v = OptionBool::DontCare;
+            }
+        }
+    }
+
+    /// merge two rows
+    fn merge(&self, other: &Row) -> Row {
+        let mut res = self.clone();
+        res.mark(self.diff(other));
+        res.id.extend_from_slice(&other.id);
+        res
+    }
+
+    fn can_merge(&self, other: &Row) -> bool {
+        self.care() == other.care() && self.diff(other).count_ones() == 1
+    }
+}
+
 impl Tree {
     pub fn cnf(&self) -> Tree {
         // Using the Quine-McCluskey algorithm
@@ -384,22 +462,11 @@ impl Tree {
         let table = get_table(&expr, &expr);
         let bit_width = (table.len() - 1).count_ones() as usize;
         // we only need to look at the zero rows
-        let false_rows: Vec<Vec<OptionBool>> = table
+        let false_rows: Vec<Row> = table
             .iter()
             .enumerate()
             .filter(|(_, &b)| !b)
-            .map(|(i, _)| {
-                let mut row = Vec::with_capacity(bit_width);
-                for j in 0..bit_width {
-                    let bit = (i >> (bit_width - j - 1)) & 1;
-                    row.push(if bit == 1 {
-                        OptionBool::True
-                    } else {
-                        OptionBool::False
-                    });
-                }
-                row
-            })
+            .map(|(i, _)| Row::new(i, bit_width))
             .collect();
         if false_rows.is_empty() || false_rows.len() == 1 << var_list.len() {
             // all true or all false
@@ -414,7 +481,7 @@ impl Tree {
         // Step 2: generate prime implicants by combining rows
         let mut prime_implicants = Vec::new();
         let mut done = false;
-        let mut implicants = false_rows;
+        let mut implicants = false_rows.clone();
         while !done {
             done = true;
             let mut new_implicants = Vec::new();
@@ -422,27 +489,15 @@ impl Tree {
             for i in 0..implicants.len() {
                 let mut found = false;
                 for j in i + 1..implicants.len() {
-                    let mut diff = 0;
-                    let mut diff_index = 0;
-                    for k in 0..bit_width {
-                        if implicants[i][k] != implicants[j][k] {
-                            if diff == 1
-                                || implicants[i][k] == OptionBool::DontCare
-                                || implicants[j][k] == OptionBool::DontCare
-                            {
-                                diff = 2;
-                                break;
-                            }
-                            diff += 1;
-                            diff_index = k;
-                        }
-                    }
-                    if diff == 1 {
+                    if implicants[i].can_merge(&implicants[j]) {
                         found = true;
                         used[j] = true;
-                        let mut new_implicant = implicants[i].clone();
-                        new_implicant[diff_index] = OptionBool::DontCare;
-                        new_implicants.push(new_implicant);
+                        // check if the new implicant is already in the list
+                        let mut new_implicant = implicants[i].merge(&implicants[j]);
+                        new_implicant.id.sort();
+                        if !prime_implicants.contains(&new_implicant) {
+                            new_implicants.push(new_implicant);
+                        }
                     }
                 }
                 if found {
@@ -455,11 +510,110 @@ impl Tree {
         }
         prime_implicants.sort();
         prime_implicants.dedup();
+        println!(
+            "False rows: {:16}{:?}",
+            "",
+            false_rows.iter().map(|r| &r.id).collect::<Vec<_>>()
+        );
+        println!(
+            "Prime implicants: {:10}{:?}",
+            "",
+            prime_implicants.iter().map(|r| &r.id).collect::<Vec<_>>()
+        );
+        // Step 3: generate essential prime implicants by checking if they cover all false rows
+        // this is done by making sure that the id of every implicant is represented at least once
+        let mut essential_prime_implicants = Vec::new();
+        // the first step is to find the implicants that are the only ones that cover a row, if any
+        let mut covered = vec![false; table.len()];
+        for implicant in &false_rows {
+            let mut count = 0;
+            let mut index = 0;
+            for (i, row) in prime_implicants.iter().enumerate() {
+                if row.id.iter().any(|&id| id == implicant.id[0]) {
+                    count += 1;
+                    index = i;
+                }
+            }
+            if count == 1 && !essential_prime_implicants.contains(&prime_implicants[index]) {
+                essential_prime_implicants.push(prime_implicants[index].clone());
+                for id in &prime_implicants[index].id {
+                    covered[*id] = true;
+                }
+            }
+        }
+        println!("{:?}", covered);
+        println!("{:?}", essential_prime_implicants);
+        // now we need to find the implicants that cover the most rows that are not covered yet
+        let mut done = false;
+        while !done {
+            done = true;
+            let mut max = 0;
+            let mut index = 0;
+            for (i, implicant) in prime_implicants.iter().enumerate() {
+                // if every id is covered, we don't need to check this implicant
+                if implicant.id.iter().all(|&id| covered[id]) {
+                    continue;
+                }
+                let mut count = 0;
+                for (j, row) in false_rows.iter().enumerate() {
+                    if covered[j] {
+                        continue;
+                    }
+                    if implicant.id.iter().any(|&id| id == row.id[0]) {
+                        count += 1;
+                    }
+                }
+                if count > max {
+                    max = count;
+                    index = i;
+                    done = false;
+                }
+            }
+            if !done {
+                essential_prime_implicants.push(prime_implicants[index].clone());
+                for row in false_rows.iter() {
+                    if covered[row.id[0]] {
+                        continue;
+                    } else if prime_implicants[index].id.iter().any(|&id| id == row.id[0]) {
+                        covered[row.id[0]] = true;
+                    }
+                }
+            }
+        }
+        println!(
+            "Essential prime implicants: {:?}",
+            essential_prime_implicants
+        );
+        essential_prime_implicants = prime_implicants;
+        // let mut essential_prime_implicants = Vec::new();
+        // let mut covered = vec![false; false_rows.len()];
+        // for implicant in &prime_implicants {
+        //     let mut found = false;
+        //     for (i, row) in false_rows.iter().enumerate() {
+        //         if covered[i] {
+        //             continue;
+        //         }
+        //         let mut match_ = true;
+        //         for (j, &bit) in implicant.iter().enumerate() {
+        //             if bit != OptionBool::DontCare && bit != row[j] {
+        //                 match_ = false;
+        //                 break;
+        //             }
+        //         }
+        //         if match_ {
+        //             found = true;
+        //             covered[i] = true;
+        //         }
+        //     }
+        //     if found {
+        //         essential_prime_implicants.push(implicant.clone());
+        //     }
+        // }
         let mut res: Vec<String> = Vec::new();
-        for implicant in prime_implicants.iter() {
+        for implicant in &essential_prime_implicants {
             let mut or_needed = 0;
             let mut s = String::new();
-            for (j, bit) in implicant.iter().enumerate() {
+            for (j, bit) in implicant.values.iter().enumerate() {
                 match bit {
                     // here we invert the bits because we're looking at the zero rows
                     OptionBool::False => {
@@ -480,9 +634,8 @@ impl Tree {
             res.push(s);
         }
         res.sort();
-        println!("{:?}", res);
         let mut res: String = res.concat();
-        for _ in 0..prime_implicants.len() - 1 {
+        for _ in 0..essential_prime_implicants.len() - 1 {
             res.push('&');
         }
         res.parse().unwrap() // should never fail
@@ -502,276 +655,277 @@ impl Node {
     }
 
     pub fn simplify(self) -> Node {
-        let mut new = self.clone();
-        new.not = self.not % 2;
-        match new.literal {
-            Const(c) => Node {
-                not: 0,
-                literal: Const(c ^ (new.not == 1)),
-            },
-            Var(_) => new,
-            Binary { op, children } => {
-                let mut new_children = Vec::new();
-                if op == Or || op == And {
-                    for child in &children {
-                        if let Binary { op: o, children: c } = child.clone().simplify().literal {
-                            if op == o {
-                                new_children.extend(c);
-                            } else {
-                                new_children.push(child.clone().simplify());
-                            }
-                        } else {
-                            new_children.push(child.clone().simplify());
-                        }
-                    }
-                    let mut children = new_children;
-                    for i in 0..children.len() {
-                        for j in (i + 1)..children.len() {
-                            if children.get(j).is_none() {
-                                continue;
-                            }
-                            if let NodeCmp::Equal = children[i].compare(&children[j]) {
-                                children.remove(j);
-                            }
-                        }
-                    }
-                }
-                let mut new_children: Vec<Node> = Vec::new();
-                match op {
-                    And => {
-                        // iterate through children, while removing duplicates
-                        // if any are false, return false
-                        // if any are true, remove them
-                        // if there are conflicting children, return false
-                        for child in &children {
-                            if let Const(c) = child.literal {
-                                if c ^ (child.not == 1) {
-                                    continue;
-                                }
-                                return Node {
-                                    not: 0,
-                                    literal: Const(false),
-                                };
-                            }
-                            let mut to_add = true;
-                            for new_child in &new_children {
-                                match child.compare(new_child) {
-                                    NodeCmp::Equal => {
-                                        to_add = false;
-                                        break;
-                                    }
-                                    NodeCmp::Opposite => {
-                                        return Node {
-                                            not: 0,
-                                            literal: Const(false),
-                                        };
-                                    }
-                                    NodeCmp::NotEqual => {}
-                                }
-                            }
-                            if to_add {
-                                new_children.push(child.clone());
-                            }
-                        }
-                        match new_children.len() {
-                            0 => Node {
-                                not: 0,
-                                literal: Const(true),
-                            },
-                            1 => new_children[0].clone(),
-                            _ => Node {
-                                not: 0,
-                                literal: Binary {
-                                    op: And,
-                                    children: new_children,
-                                },
-                            },
-                        }
-                    }
-                    Or => {
-                        // iterate through children, while removing duplicates
-                        // if any are true, return true
-                        // if any are false, remove them
-                        // if there are conflicting children, return true
-                        for child in &children {
-                            if let Const(c) = child.literal {
-                                if c ^ (child.not == 1) {
-                                    return Node {
-                                        not: 0,
-                                        literal: Const(true),
-                                    };
-                                }
-                                continue;
-                            }
-                            let mut to_add = true;
-                            for new_child in &new_children {
-                                match child.compare(new_child) {
-                                    NodeCmp::Equal => {
-                                        to_add = false;
-                                        break;
-                                    }
-                                    NodeCmp::Opposite => {
-                                        return Node {
-                                            not: 0,
-                                            literal: Const(true),
-                                        };
-                                    }
-                                    NodeCmp::NotEqual => {}
-                                }
-                            }
-                            if to_add {
-                                new_children.push(child.clone());
-                            }
-                        }
-                        match new_children.len() {
-                            0 => Node {
-                                not: 0,
-                                literal: Const(false),
-                            },
-                            1 => new_children[0].clone(),
-                            _ => Node {
-                                not: 0,
-                                literal: Binary {
-                                    op: Or,
-                                    children: new_children,
-                                },
-                            },
-                        }
-                    }
-                    Xor => {
-                        // Xor is not associative, so it's a bit different here
-                        // it should only have two children
-                        // if they are equal, return false
-                        // if they are opposite, return true
-                        // if one is true, return the other negated
-                        // if one is false, return the other
-                        // otherwise, return the xor of the two
-                        if children.len() != 2 {
-                            panic!("Xor should only have two children");
-                        }
-                        match children[0].compare(&children[1]) {
-                            NodeCmp::Equal => Node {
-                                not: 0,
-                                literal: Const(false),
-                            },
-                            NodeCmp::Opposite => Node {
-                                not: 0,
-                                literal: Const(true),
-                            },
-                            NodeCmp::NotEqual => {
-                                match (children[0].literal, children[1].literal) {
-                                    (Const(c), _) | (_, Const(c)) => {
-                                        if c ^ (children[0].not == 1) {
-                                            children[1].clone().not()
-                                        } else {
-                                            children[0].clone()
-                                        }
-                                    }
-                                    _ => new,
-                                };
-                                if let Const(c) = children[0].literal {
-                                    let mut new = children[1].clone();
-                                    new.not().simplify()
-                                } else if let Const(c) = children[1].literal {
-                                    let mut new = children[0].clone();
-                                    new.not().simplify()
-                                } else {
-                                    self
-                                }
-                            }
-                        }
-                    }
-                    Impl => {
-                        // Impl is not associative, so it's a bit different here
-                        // it should only have two children
-                        // if the first is true, return the second
-                        // if the first is false, return true
-                        // if the second is true, return true
-                        // if the second is false, return the first negated
-                        // otherwise, return the impl of the two
-                        if children.len() != 2 {
-                            panic!("Impl should only have two children");
-                        }
-                        match children[0].compare(&children[1]) {
-                            NodeCmp::Equal => Node {
-                                not: 0,
-                                literal: Const(true),
-                            },
-                            NodeCmp::Opposite => {
-                                let mut new = children[0].clone();
-                                new.not = (new.not + 1) % 2;
-                                new.simplify()
-                            }
-                            NodeCmp::NotEqual => {
-                                if let Const(c) = children[0].literal {
-                                    if c ^ (children[0].not == 1) {
-                                        children[1].clone()
-                                    } else {
-                                        Node {
-                                            not: 0,
-                                            literal: Const(true),
-                                        }
-                                    }
-                                } else if let Const(c) = children[1].literal {
-                                    if c ^ (children[1].not == 1) {
-                                        Node {
-                                            not: 0,
-                                            literal: Const(true),
-                                        }
-                                    } else {
-                                        let mut new = children[0].clone();
-                                        new.not = (new.not + 1) % 2;
-                                        new.simplify()
-                                    }
-                                } else {
-                                    self
-                                }
-                            }
-                        }
-                    }
-                    Leq => {
-                        // Leq is not associative, so it's a bit different here
-                        // it should only have two children
-                        // if they are equal, return true
-                        // if they are opposite, return false
-                        // if one is true, return the other
-                        // if one is false, return the other negated
-                        // otherwise, return the leq of the two
-                        if children.len() != 2 {
-                            panic!("Leq should only have two children");
-                        }
-                        match children[0].compare(&children[1]) {
-                            NodeCmp::Equal => Node {
-                                not: 0,
-                                literal: Const(true),
-                            },
-                            NodeCmp::Opposite => Node {
-                                not: 0,
-                                literal: Const(false),
-                            },
-                            NodeCmp::NotEqual => {
-                                if let Const(c) = children[0].literal {
-                                    if c ^ (children[0].not == 1) {
-                                    } else {
-                                        children[1].clone()
-                                    }
-                                } else if let Const(c) = children[1].literal {
-                                    if c ^ (children[1].not == 1) {
-                                        children[0].clone()
-                                    } else {
-                                        Node {
-                                            not: 0,
-                                            literal: Const(false),
-                                        }
-                                    }
-                                } else {
-                                    self
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
+        self
+        // let mut new = self.clone();
+        // new.not = self.not % 2;
+        // match new.literal {
+        //     Const(c) => Node {
+        //         not: 0,
+        //         literal: Const(c ^ (new.not == 1)),
+        //     },
+        //     Var(_) => new,
+        //     Binary { op, children } => {
+        //         let mut new_children = Vec::new();
+        //         if op == Or || op == And {
+        //             for child in &children {
+        //                 if let Binary { op: o, children: c } = child.clone().simplify().literal {
+        //                     if op == o {
+        //                         new_children.extend(c);
+        //                     } else {
+        //                         new_children.push(child.clone().simplify());
+        //                     }
+        //                 } else {
+        //                     new_children.push(child.clone().simplify());
+        //                 }
+        //             }
+        //             let mut children = new_children;
+        //             for i in 0..children.len() {
+        //                 for j in (i + 1)..children.len() {
+        //                     if children.get(j).is_none() {
+        //                         continue;
+        //                     }
+        //                     if let NodeCmp::Equal = children[i].compare(&children[j]) {
+        //                         children.remove(j);
+        //                     }
+        //                 }
+        //             }
+        //         }
+        //         let mut new_children: Vec<Node> = Vec::new();
+        //         match op {
+        //             And => {
+        //                 // iterate through children, while removing duplicates
+        //                 // if any are false, return false
+        //                 // if any are true, remove them
+        //                 // if there are conflicting children, return false
+        //                 for child in &children {
+        //                     if let Const(c) = child.literal {
+        //                         if c ^ (child.not == 1) {
+        //                             continue;
+        //                         }
+        //                         return Node {
+        //                             not: 0,
+        //                             literal: Const(false),
+        //                         };
+        //                     }
+        //                     let mut to_add = true;
+        //                     for new_child in &new_children {
+        //                         match child.compare(new_child) {
+        //                             NodeCmp::Equal => {
+        //                                 to_add = false;
+        //                                 break;
+        //                             }
+        //                             NodeCmp::Opposite => {
+        //                                 return Node {
+        //                                     not: 0,
+        //                                     literal: Const(false),
+        //                                 };
+        //                             }
+        //                             NodeCmp::NotEqual => {}
+        //                         }
+        //                     }
+        //                     if to_add {
+        //                         new_children.push(child.clone());
+        //                     }
+        //                 }
+        //                 match new_children.len() {
+        //                     0 => Node {
+        //                         not: 0,
+        //                         literal: Const(true),
+        //                     },
+        //                     1 => new_children[0].clone(),
+        //                     _ => Node {
+        //                         not: 0,
+        //                         literal: Binary {
+        //                             op: And,
+        //                             children: new_children,
+        //                         },
+        //                     },
+        //                 }
+        //             }
+        //             Or => {
+        //                 // iterate through children, while removing duplicates
+        //                 // if any are true, return true
+        //                 // if any are false, remove them
+        //                 // if there are conflicting children, return true
+        //                 for child in &children {
+        //                     if let Const(c) = child.literal {
+        //                         if c ^ (child.not == 1) {
+        //                             return Node {
+        //                                 not: 0,
+        //                                 literal: Const(true),
+        //                             };
+        //                         }
+        //                         continue;
+        //                     }
+        //                     let mut to_add = true;
+        //                     for new_child in &new_children {
+        //                         match child.compare(new_child) {
+        //                             NodeCmp::Equal => {
+        //                                 to_add = false;
+        //                                 break;
+        //                             }
+        //                             NodeCmp::Opposite => {
+        //                                 return Node {
+        //                                     not: 0,
+        //                                     literal: Const(true),
+        //                                 };
+        //                             }
+        //                             NodeCmp::NotEqual => {}
+        //                         }
+        //                     }
+        //                     if to_add {
+        //                         new_children.push(child.clone());
+        //                     }
+        //                 }
+        //                 match new_children.len() {
+        //                     0 => Node {
+        //                         not: 0,
+        //                         literal: Const(false),
+        //                     },
+        //                     1 => new_children[0].clone(),
+        //                     _ => Node {
+        //                         not: 0,
+        //                         literal: Binary {
+        //                             op: Or,
+        //                             children: new_children,
+        //                         },
+        //                     },
+        //                 }
+        //             }
+        //             Xor => {
+        //                 // Xor is not associative, so it's a bit different here
+        //                 // it should only have two children
+        //                 // if they are equal, return false
+        //                 // if they are opposite, return true
+        //                 // if one is true, return the other negated
+        //                 // if one is false, return the other
+        //                 // otherwise, return the xor of the two
+        //                 if children.len() != 2 {
+        //                     panic!("Xor should only have two children");
+        //                 }
+        //                 match children[0].compare(&children[1]) {
+        //                     NodeCmp::Equal => Node {
+        //                         not: 0,
+        //                         literal: Const(false),
+        //                     },
+        //                     NodeCmp::Opposite => Node {
+        //                         not: 0,
+        //                         literal: Const(true),
+        //                     },
+        //                     NodeCmp::NotEqual => {
+        //                         match (children[0].literal, children[1].literal) {
+        //                             (Const(c), _) | (_, Const(c)) => {
+        //                                 if c ^ (children[0].not == 1) {
+        //                                     children[1].clone().not()
+        //                                 } else {
+        //                                     children[0].clone()
+        //                                 }
+        //                             }
+        //                             _ => new,
+        //                         };
+        //                         if let Const(c) = children[0].literal {
+        //                             let mut new = children[1].clone();
+        //                             new.not().simplify()
+        //                         } else if let Const(c) = children[1].literal {
+        //                             let mut new = children[0].clone();
+        //                             new.not().simplify()
+        //                         } else {
+        //                             self
+        //                         }
+        //                     }
+        //                 }
+        //             }
+        //             Impl => {
+        //                 // Impl is not associative, so it's a bit different here
+        //                 // it should only have two children
+        //                 // if the first is true, return the second
+        //                 // if the first is false, return true
+        //                 // if the second is true, return true
+        //                 // if the second is false, return the first negated
+        //                 // otherwise, return the impl of the two
+        //                 if children.len() != 2 {
+        //                     panic!("Impl should only have two children");
+        //                 }
+        //                 match children[0].compare(&children[1]) {
+        //                     NodeCmp::Equal => Node {
+        //                         not: 0,
+        //                         literal: Const(true),
+        //                     },
+        //                     NodeCmp::Opposite => {
+        //                         let mut new = children[0].clone();
+        //                         new.not = (new.not + 1) % 2;
+        //                         new.simplify()
+        //                     }
+        //                     NodeCmp::NotEqual => {
+        //                         if let Const(c) = children[0].literal {
+        //                             if c ^ (children[0].not == 1) {
+        //                                 children[1].clone()
+        //                             } else {
+        //                                 Node {
+        //                                     not: 0,
+        //                                     literal: Const(true),
+        //                                 }
+        //                             }
+        //                         } else if let Const(c) = children[1].literal {
+        //                             if c ^ (children[1].not == 1) {
+        //                                 Node {
+        //                                     not: 0,
+        //                                     literal: Const(true),
+        //                                 }
+        //                             } else {
+        //                                 let mut new = children[0].clone();
+        //                                 new.not = (new.not + 1) % 2;
+        //                                 new.simplify()
+        //                             }
+        //                         } else {
+        //                             self
+        //                         }
+        //                     }
+        //                 }
+        //             }
+        //             Leq => {
+        //                 // Leq is not associative, so it's a bit different here
+        //                 // it should only have two children
+        //                 // if they are equal, return true
+        //                 // if they are opposite, return false
+        //                 // if one is true, return the other
+        //                 // if one is false, return the other negated
+        //                 // otherwise, return the leq of the two
+        //                 if children.len() != 2 {
+        //                     panic!("Leq should only have two children");
+        //                 }
+        //                 match children[0].compare(&children[1]) {
+        //                     NodeCmp::Equal => Node {
+        //                         not: 0,
+        //                         literal: Const(true),
+        //                     },
+        //                     NodeCmp::Opposite => Node {
+        //                         not: 0,
+        //                         literal: Const(false),
+        //                     },
+        //                     NodeCmp::NotEqual => {
+        //                         if let Const(c) = children[0].literal {
+        //                             if c ^ (children[0].not == 1) {
+        //                             } else {
+        //                                 children[1].clone()
+        //                             }
+        //                         } else if let Const(c) = children[1].literal {
+        //                             if c ^ (children[1].not == 1) {
+        //                                 children[0].clone()
+        //                             } else {
+        //                                 Node {
+        //                                     not: 0,
+        //                                     literal: Const(false),
+        //                                 }
+        //                             }
+        //                         } else {
+        //                             self
+        //                         }
+        //                     }
+        //                 }
+        //             }
+        //         }
+        //     }
+        // }
     }
 }

@@ -68,17 +68,30 @@ fn main() -> Result<(), ParseError> {
     };
     println!("Input:\n{}", expr);
     let tree = expr.parse::<Tree>()?;
-    println!(
-        "{}",
-        if dot {
-            create_graph(&tree.root, "ex06_in");
-            let cnf = tree.cnf();
-            create_graph(&(cnf.root), "ex06_out");
-            cnf.root.to_string()
-        } else {
-            conjunctive_normal_form(&expr)
-        },
-    );
+    let cnf = if dot {
+        create_graph(&tree.root, "ex06_in");
+        let cnf = tree.cnf();
+        create_graph(&(cnf.root), "ex06_out");
+        cnf.root.to_string()
+    } else {
+        conjunctive_normal_form(&expr)
+    };
+    println!("{}", cnf);
+    if node::get_table(&cnf, &expr) == node::get_table(&expr, &expr) {
+        println!("OK");
+    } else {
+        println!(
+            "KO!\n{:?}\n{:?}",
+            node::get_table(&cnf, &expr)
+                .iter()
+                .map(|x| if *x { '1' } else { '0' })
+                .collect::<String>(),
+            node::get_table(&expr, &expr)
+                .iter()
+                .map(|x| if *x { '1' } else { '0' })
+                .collect::<String>(),
+        );
+    }
     Ok(())
 }
 
