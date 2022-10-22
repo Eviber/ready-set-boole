@@ -543,48 +543,39 @@ impl Tree {
         }
         println!("{:?}", covered);
         println!("{:?}", essential_prime_implicants);
-        // now we need to find the implicants that cover the most rows that are not covered yet
-        let mut done = false;
-        while !done {
-            done = true;
-            let mut max = 0;
-            let mut index = 0;
-            for (i, implicant) in prime_implicants.iter().enumerate() {
-                // if every id is covered, we don't need to check this implicant
-                if implicant.id.iter().all(|&id| covered[id]) {
-                    continue;
-                }
-                let mut count = 0;
-                for (j, row) in false_rows.iter().enumerate() {
-                    if covered[j] {
-                        continue;
-                    }
-                    if implicant.id.iter().any(|&id| id == row.id[0]) {
-                        count += 1;
-                    }
-                }
-                if count > max {
-                    max = count;
-                    index = i;
-                    done = false;
-                }
+        // now we need to find the best combination of implicants that cover all rows
+        // this is done by implementing the Petrick's method
+        // https://en.wikipedia.org/wiki/Petrick%27s_method
+        let mut petrick = Vec::new();
+        for implicant in &prime_implicants {
+            // check if the implicant covers any row that is not covered yet
+            if implicant.id.iter().any(|&id| !covered[id]) {
+                petrick.push(implicant.id.clone());
             }
-            if !done {
-                essential_prime_implicants.push(prime_implicants[index].clone());
-                for row in false_rows.iter() {
-                    if covered[row.id[0]] {
-                        continue;
-                    } else if prime_implicants[index].id.iter().any(|&id| id == row.id[0]) {
-                        covered[row.id[0]] = true;
-                    }
-                }
-            }
+        }
+        println!("{:?}", petrick);
+        if !petrick.is_empty() {
+            let pos: Vec<Vec<usize>> = covered
+                .iter()
+                .enumerate()
+                .filter(|(_, &b)| !b)
+                .map(|(i, _)| {
+                    petrick
+                        .iter()
+                        .enumerate()
+                        .filter(|(_, v)| v.iter().any(|&id| id == i))
+                        .map(|(i, _)| i)
+                        .collect()
+                })
+                .collect();
+            println!("petrick: {:?}", pos);
+            println!("petrick: {:?}", petrick);
+            essential_prime_implicants = prime_implicants;
         }
         println!(
             "Essential prime implicants: {:?}",
             essential_prime_implicants
         );
-        essential_prime_implicants = prime_implicants;
         // let mut essential_prime_implicants = Vec::new();
         // let mut covered = vec![false; false_rows.len()];
         // for implicant in &prime_implicants {
