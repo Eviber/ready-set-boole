@@ -1,3 +1,4 @@
+#![recursion_limit = "2002"]
 mod dot_graph;
 mod expr_generator;
 mod tree;
@@ -120,29 +121,13 @@ mod tests {
 
     #[test]
     fn ex06_random_test_cnf() {
-        for _ in 0..1000 {
-            let expr = random_rpn_expr(3, 5);
-            let cnf = conjunctive_normal_form(&expr);
-            assert_eq!(get_table(&cnf, &expr), get_table(&expr, &expr), "{}", expr);
-        }
+        let expr = random_rpn_expr(7, 6);
+        let cnf = conjunctive_normal_form(&expr);
+        assert_eq!(get_table(&cnf, &expr), get_table(&expr, &expr), "{}", expr);
     }
 
     #[test]
     fn ex06_test_simplest_cnf() {
         // A!!DAB==EC|BE=&&&
-    }
-
-    #[test]
-    fn ex06_random_test_simplify() {
-        for _ in 0..1000 {
-            let expr = random_rpn_expr(3, 3);
-            let simp = expr
-                .parse::<Tree>()
-                .expect("input is valid")
-                .root
-                .simplify()
-                .to_string();
-            assert_eq!(get_table(&simp, &expr), get_table(&expr, &expr), "{}", expr);
-        }
     }
 }

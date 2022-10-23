@@ -44,5 +44,3 @@ path = "src/ex08/ex08.rs"
 [[bin]]
 name = "ex09"
 path = "src/ex09/ex09.rs"
-
-[dependencies]
