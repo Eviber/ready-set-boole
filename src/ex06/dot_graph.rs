@@ -1,8 +1,8 @@
 // prints a dot graph of the AST
 // use dot -Tsvg -o ex04.svg ex04.dot
 
-use crate::node::Literal::{Binary, Const, Var};
-use crate::node::Node;
+use crate::tree::node::Literal::{Binary, Const, Var};
+use crate::tree::node::Node;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::Write;
@@ -70,7 +70,7 @@ fn get_idx(node: &Node, idx: &mut HashMap<char, usize>) -> String {
     match &node.literal {
         Const(c) => {
             let id = get_id('c');
-            format!("\"{}_{}\"", (*c as u8), id)
+            format!("\"{}_{}\"", u8::from(*c), id)
         }
         Var(v) => {
             let v = v.get().name;
@@ -89,7 +89,7 @@ fn print_dot_node(dot: &mut String, node: &Node, idx: &mut HashMap<char, usize>)
     let nots = "!".repeat(node.not);
     match &node.literal {
         Const(c) => {
-            dot.push_str(&format!("\t{} [label=\"{}{}\"];\n", id, nots, (*c as u8)));
+            dot.push_str(&format!("\t{} [label=\"{}{}\"];\n", id, nots, u8::from(*c)));
         }
         Var(v) => {
             let v = v.get().name;

@@ -1,12 +1,12 @@
 mod dot_graph;
 mod expr_generator;
-mod node;
+mod tree;
 
-use crate::node::Tree;
+use crate::tree::Tree;
 use dot_graph::create_graph;
 use expr_generator::random_rpn_expr;
-use node::ParseError;
 use std::env::args;
+use tree::binop::ParseError;
 
 struct Args {
     expr: String,
@@ -77,16 +77,16 @@ fn main() -> Result<(), ParseError> {
         conjunctive_normal_form(&expr)
     };
     println!("{}", cnf);
-    if node::get_table(&cnf, &expr) == node::get_table(&expr, &expr) {
+    if tree::get_table(&cnf, &expr) == tree::get_table(&expr, &expr) {
         println!("OK");
     } else {
         println!(
             "KO!\n{:?}\n{:?}",
-            node::get_table(&cnf, &expr)
+            tree::get_table(&cnf, &expr)
                 .iter()
                 .map(|x| if *x { '1' } else { '0' })
                 .collect::<String>(),
-            node::get_table(&expr, &expr)
+            tree::get_table(&expr, &expr)
                 .iter()
                 .map(|x| if *x { '1' } else { '0' })
                 .collect::<String>(),
@@ -98,7 +98,7 @@ fn main() -> Result<(), ParseError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::node::*;
+    use crate::tree::*;
 
     #[allow(dead_code)]
     fn test_cnf(formula: &str, expected: &str) {
@@ -125,6 +125,11 @@ mod tests {
             let cnf = conjunctive_normal_form(&expr);
             assert_eq!(get_table(&cnf, &expr), get_table(&expr, &expr), "{}", expr);
         }
+    }
+
+    #[test]
+    fn ex06_test_simplest_cnf() {
+        // A!!DAB==EC|BE=&&&
     }
 
     #[test]

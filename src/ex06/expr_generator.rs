@@ -1,4 +1,4 @@
-use crate::node::{BinOp, Literal, Node, VarCell, Variable};
+use crate::tree::node::{BinOp, Literal, Node, VarCell, Variable};
 use std::cell::Cell;
 use std::fs::File;
 use std::io::Read;
@@ -27,8 +27,8 @@ pub fn random_rpn_expr(maxdepth: u32, maxvars: usize) -> String {
 }
 
 fn random_node(vals: &[VarCell], maxdepth: u32) -> Node {
-    use BinOp::*;
-    use Literal::*;
+    use BinOp::{And, Impl, Leq, Or, Xor};
+    use Literal::{Binary, Var};
 
     if maxdepth == 0 {
         return Node {
