@@ -40,14 +40,21 @@ fn blue(s: &str) -> String {
 
 fn print_truth_table_color(formula: &str, color: bool) -> Result<(), ParseError> {
     use std::io::{BufWriter, Write};
+    use std::thread;
+    let out = std::io::stdout();
+    let mut out = BufWriter::new(out.lock());
     let tree = formula.parse::<Tree>()?;
     let var_list: Vec<char> = ('A'..='Z').filter(|&c| formula.contains(c)).collect();
-    let out = std::io::stdout();
-    let mut buf = BufWriter::new(out.lock());
+    let bit_width = var_list.len() as u32;
     let bar = if color { blue("|") } else { "|".to_string() };
+    let max_threads = thread::available_parallelism()
+        .unwrap_or(std::num::NonZeroUsize::new(2).unwrap())
+        .get()
+        - 1;
+    let mut children = Vec::with_capacity(max_threads);
 
     writeln!(
-        buf,
+        out,
         "{}{} = |",
         var_list
             .iter()
@@ -56,23 +63,56 @@ fn print_truth_table_color(formula: &str, color: bool) -> Result<(), ParseError>
         bar
     )
     .unwrap(); // | A | B | ... | Z | = |
-    writeln!(buf, "{}{}---|", ("|---").repeat(var_list.len()), bar).unwrap(); // |---|---| ... |---|
-    for i in 0..(1u32 << var_list.len()) {
-        for (j, v) in var_list.iter().enumerate() {
-            let j = var_list.len() - j - 1;
-            let bit = (i >> j) & 1;
-            tree.variables[*v as usize - 'A' as usize]
-                .borrow_mut()
-                .value = bit != 0;
-            write!(buf, "| {} ", color_bit(bit, color)).unwrap();
-        }
-        writeln!(
-            buf,
-            "{} {} |",
-            bar,
-            color_bit(tree.root.eval() as u32, color)
-        )
-        .unwrap();
+    writeln!(out, "{}{}---|", ("|---").repeat(var_list.len()), bar).unwrap(); // |---|---| ... |---|
+
+    // main thread will do the printing, and the other threads will do the computation
+    use std::sync::mpsc;
+    let mut channels: Vec<mpsc::Receiver<String>> = Vec::with_capacity(max_threads);
+    let mut dx = 0;
+    for offset in 0..max_threads as u32 {
+        let (tx, rx) = mpsc::channel();
+        channels.push(rx);
+        let chunk_size = if ((1 << bit_width) - dx) % max_threads as u32 == 0 {
+            ((1 << bit_width) - dx) / max_threads as u32
+        } else {
+            dx += 1;
+            ((1 << bit_width) - dx) / max_threads as u32 + 1
+        };
+        let formula = formula.to_string();
+        let var_list = var_list.clone();
+        let bar = bar.clone();
+        let child = thread::spawn(move || {
+            use std::fmt::Write;
+            let tree = formula.parse::<Tree>().unwrap();
+            for i in 0..chunk_size {
+                let i = i * (max_threads as u32) + offset;
+                if i >= 1 << bit_width {
+                    break;
+                }
+                let mut line = String::with_capacity(4 * var_list.len());
+                for (j, v) in var_list.iter().enumerate() {
+                    let j = var_list.len() - j - 1;
+                    let bit = (i >> j) & 1;
+                    tree.variables[*v as usize - 'A' as usize]
+                        .borrow_mut()
+                        .value = bit != 0;
+                    write!(line, "| {} ", color_bit(bit, color)).unwrap();
+                }
+                write!(
+                    line,
+                    "{} {} |",
+                    bar,
+                    color_bit(tree.root.eval() as u32, color)
+                )
+                .unwrap();
+                tx.send(line).unwrap();
+            }
+        });
+        children.push(child);
+    }
+    for i in 0..(1 << bit_width) {
+        let line = channels[i % max_threads].recv().unwrap();
+        writeln!(out, "{}", line).unwrap();
     }
     Ok(())
 }
