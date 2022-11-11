@@ -9,6 +9,7 @@ use dot_graph::create_graph;
 use expr_generator::random_rpn_expr;
 use node::ParseError;
 use std::env::args;
+use std::sync::mpsc;
 
 struct Args {
     expr: String,
@@ -38,82 +39,99 @@ fn blue(s: &str) -> String {
     format!("\x1b[1;34m{}\x1b[0m", s)
 }
 
-fn print_truth_table_color(formula: &str, color: bool) -> Result<(), ParseError> {
+fn line_size(rows: usize, color: bool, bar: &str) -> usize {
+    let bit = color_bit(0, color).len();
+    let bar = bar.len();
+    (3 + bit) * rows + bar
+}
+
+fn line_from_u32(
+    i: u32,
+    line_size: usize,
+    var_list: &[char],
+    tree: &Tree,
+    color: bool,
+    bar: &str,
+) -> String {
+    use std::fmt::Write;
+    let mut line = String::with_capacity(line_size);
+    for (j, v) in var_list.iter().enumerate() {
+        let j = var_list.len() - j - 1;
+        let bit = (i >> j) & 1;
+        tree.variables[*v as usize - 'A' as usize]
+            .borrow_mut()
+            .value = bit != 0;
+        write!(line, "| {} ", color_bit(bit, color)).unwrap();
+    }
+    write!(
+        line,
+        "{} {} |",
+        bar,
+        color_bit(tree.root.eval() as u32, color)
+    )
+    .unwrap();
+    line
+}
+
+struct TableData {
+    vars: Vec<char>,
+    bar: String,
+    max_value: u32,
+    threads: usize,
+}
+
+fn print_table(channels: Vec<mpsc::Receiver<String>>, data: &TableData) {
     use std::io::{BufWriter, Write};
-    use std::thread;
     let out = std::io::stdout();
     let mut out = BufWriter::new(out.lock());
-    let tree = formula.parse::<Tree>()?;
-    let var_list: Vec<char> = ('A'..='Z').filter(|&c| formula.contains(c)).collect();
-    let bit_width = var_list.len() as u32;
-    let bar = if color { blue("|") } else { "|".to_string() };
-    let max_threads = thread::available_parallelism()
-        .unwrap_or(std::num::NonZeroUsize::new(2).unwrap())
-        .get()
-        - 1;
-    let mut children = Vec::with_capacity(max_threads);
-
-    writeln!(
-        out,
-        "{}{} = |",
-        var_list
-            .iter()
-            .map(|v| format!("| {} ", v))
-            .collect::<String>(),
-        bar
-    )
-    .unwrap(); // | A | B | ... | Z | = |
-    writeln!(out, "{}{}---|", ("|---").repeat(var_list.len()), bar).unwrap(); // |---|---| ... |---|
-
-    // main thread will do the printing, and the other threads will do the computation
-    use std::sync::mpsc;
-    let mut channels: Vec<mpsc::Receiver<String>> = Vec::with_capacity(max_threads);
-    let mut dx = 0;
-    for offset in 0..max_threads as u32 {
-        let (tx, rx) = mpsc::channel();
-        channels.push(rx);
-        let chunk_size = if ((1 << bit_width) - dx) % max_threads as u32 == 0 {
-            ((1 << bit_width) - dx) / max_threads as u32
-        } else {
-            dx += 1;
-            ((1 << bit_width) - dx) / max_threads as u32 + 1
-        };
-        let formula = formula.to_string();
-        let var_list = var_list.clone();
-        let bar = bar.clone();
-        let child = thread::spawn(move || {
-            use std::fmt::Write;
-            let tree = formula.parse::<Tree>().unwrap();
-            for i in 0..chunk_size {
-                let i = i * (max_threads as u32) + offset;
-                if i >= 1 << bit_width {
-                    break;
-                }
-                let mut line = String::with_capacity(4 * var_list.len());
-                for (j, v) in var_list.iter().enumerate() {
-                    let j = var_list.len() - j - 1;
-                    let bit = (i >> j) & 1;
-                    tree.variables[*v as usize - 'A' as usize]
-                        .borrow_mut()
-                        .value = bit != 0;
-                    write!(line, "| {} ", color_bit(bit, color)).unwrap();
-                }
-                write!(
-                    line,
-                    "{} {} |",
-                    bar,
-                    color_bit(tree.root.eval() as u32, color)
-                )
-                .unwrap();
-                tx.send(line).unwrap();
-            }
-        });
-        children.push(child);
-    }
-    for i in 0..(1 << bit_width) {
-        let line = channels[i % max_threads].recv().unwrap();
+    data.vars
+        .iter()
+        .for_each(|&c| write!(out, "| {} ", c).unwrap());
+    writeln!(out, "{} = |", data.bar).unwrap(); // | A | B | ... | Z | = |
+    data.vars.iter().for_each(|_| write!(out, "|---").unwrap());
+    writeln!(out, "{}---|", data.bar).unwrap(); // |---|---| ... |---|
+    for i in 0..data.max_value as usize {
+        let line = channels[i % data.threads].recv().unwrap();
         writeln!(out, "{}", line).unwrap();
     }
+}
+
+fn print_truth_table_color(formula: &str, color: bool) -> Result<(), ParseError> {
+    use std::thread;
+    let _ = formula.parse::<Tree>()?;
+    let vars: Vec<char> = ('A'..='Z').filter(|&c| formula.contains(c)).collect();
+    let bar = if color { blue("|") } else { "|".to_string() };
+
+    thread::scope(|s| {
+        let max_value = 1 << vars.len() as u32;
+        let threads = thread::available_parallelism()
+            .unwrap_or(std::num::NonZeroUsize::new(2).unwrap())
+            .get()
+            - 1;
+        let data = TableData {
+            vars,
+            bar,
+            max_value,
+            threads,
+        };
+        let mut channels: Vec<mpsc::Receiver<String>> = Vec::with_capacity(data.threads);
+        let line_size = line_size(data.vars.len(), color, &data.bar);
+
+        for offset in 0..data.threads as u32 {
+            let (tx, rx) = mpsc::sync_channel(16);
+            channels.push(rx);
+            let vars_cpy = data.vars.clone();
+            let bar = data.bar.clone();
+            s.spawn(move || {
+                let tree = formula.parse::<Tree>().unwrap();
+                for i in (offset..(data.max_value)).step_by(data.threads) {
+                    let line = line_from_u32(i, line_size, &vars_cpy, &tree, color, &bar);
+                    tx.send(line).unwrap();
+                }
+            });
+        }
+        print_table(channels, &data);
+    });
     Ok(())
 }
 
