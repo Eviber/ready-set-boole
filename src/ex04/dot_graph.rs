@@ -2,7 +2,7 @@
 // use dot -Tsvg -o ex04.svg ex04.dot
 
 use crate::node::Node;
-use crate::node::Node::*;
+use crate::node::Node::{Binary, Not, Val};
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::Write;

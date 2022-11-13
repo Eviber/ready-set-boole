@@ -1,9 +1,9 @@
 use std::cell::RefCell;
 use std::fmt;
 use std::rc::Rc;
-use BinOp::*;
-use Node::*;
-use ParseError::*;
+use BinOp::{And, Impl, Leq, Or, Xor};
+use Node::{Binary, Not, Val};
+use ParseError::{InvalidCharacter, MissingOperand, UnbalancedExpression};
 
 #[derive(Clone, Copy)]
 pub enum BinOp {
@@ -81,7 +81,7 @@ impl fmt::Display for Node {
         match self {
             Binary { op, left, right } => write!(f, "({} {} {})", left, op, right),
             Not { operand } => write!(f, "!{}", operand),
-            Val(val) => write!(f, "{}", val.borrow().value as u8),
+            Val(val) => write!(f, "{}", u8::from(val.borrow().value)),
         }
     }
 }

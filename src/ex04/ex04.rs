@@ -24,14 +24,14 @@ fn print_truth_table(formula: &str) {
     }
 }
 
-fn color_bit(bit: u32, color: bool) -> String {
+fn color_bit(bit: bool, color: bool) -> String {
     if !color {
-        return format!("{}", bit);
+        return format!("{}", u8::from(bit));
     }
-    match bit {
-        0 => "\x1b[31m0\x1b[0m".to_string(),
-        1 => "\x1b[32m1\x1b[0m".to_string(),
-        _ => unreachable!(),
+    if bit {
+        "\x1b[32m1\x1b[0m".to_string()
+    } else {
+        "\x1b[31m0\x1b[0m".to_string()
     }
 }
 
@@ -40,13 +40,13 @@ fn blue(s: &str) -> String {
 }
 
 fn line_size(rows: usize, color: bool, bar: &str) -> usize {
-    let bit = color_bit(0, color).len();
+    let bit = color_bit(false, color).len();
     let bar = bar.len();
     (3 + bit) * rows + bar
 }
 
-fn line_from_u32(
-    i: u32,
+fn line_from_bitfield(
+    i: usize,
     line_size: usize,
     var_list: &[char],
     tree: &Tree,
@@ -57,30 +57,24 @@ fn line_from_u32(
     let mut line = String::with_capacity(line_size);
     for (j, v) in var_list.iter().enumerate() {
         let j = var_list.len() - j - 1;
-        let bit = (i >> j) & 1;
+        let bit: bool = (i >> j) & 1 == 1;
         tree.variables[*v as usize - 'A' as usize]
             .borrow_mut()
-            .value = bit != 0;
+            .value = bit;
         write!(line, "| {} ", color_bit(bit, color)).unwrap();
     }
-    write!(
-        line,
-        "{} {} |",
-        bar,
-        color_bit(tree.root.eval() as u32, color)
-    )
-    .unwrap();
+    write!(line, "{} {} |", bar, color_bit(tree.root.eval(), color)).unwrap();
     line
 }
 
 struct TableData {
     vars: Vec<char>,
     bar: String,
-    max_value: u32,
+    max_value: usize,
     threads: usize,
 }
 
-fn print_table(channels: Vec<mpsc::Receiver<String>>, data: &TableData) {
+fn print_table_lines(channels: Vec<mpsc::Receiver<String>>, data: &TableData) {
     use std::io::{BufWriter, Write};
     let out = std::io::stdout();
     let mut out = BufWriter::new(out.lock());
@@ -90,34 +84,46 @@ fn print_table(channels: Vec<mpsc::Receiver<String>>, data: &TableData) {
     writeln!(out, "{} = |", data.bar).unwrap(); // | A | B | ... | Z | = |
     data.vars.iter().for_each(|_| write!(out, "|---").unwrap());
     writeln!(out, "{}---|", data.bar).unwrap(); // |---|---| ... |---|
-    for i in 0..data.max_value as usize {
+    for i in 0..data.max_value {
         let line = channels[i % data.threads].recv().unwrap();
         writeln!(out, "{}", line).unwrap();
     }
+    drop(channels);
+}
+
+#[inline]
+fn needed_threads(max_value: usize) -> usize {
+    use std::cmp::min;
+    use std::num::NonZeroUsize;
+    use std::thread::available_parallelism;
+    min(
+        max_value,
+        available_parallelism()
+            .unwrap_or(NonZeroUsize::new(2).unwrap())
+            .get()
+            - 1,
+    )
 }
 
 fn print_truth_table_color(formula: &str, color: bool) -> Result<(), ParseError> {
     use std::thread;
-    let _ = formula.parse::<Tree>()?;
+    drop(formula.parse::<Tree>()?); // check for parsing errors
     let vars: Vec<char> = ('A'..='Z').filter(|&c| formula.contains(c)).collect();
     let bar = if color { blue("|") } else { "|".to_string() };
 
     thread::scope(|s| {
-        let max_value = 1 << vars.len() as u32;
-        let threads = thread::available_parallelism()
-            .unwrap_or(std::num::NonZeroUsize::new(2).unwrap())
-            .get()
-            - 1;
+        let max_value: usize = 1 << vars.len();
+        let threads = needed_threads(max_value);
         let data = TableData {
             vars,
             bar,
             max_value,
             threads,
         };
-        let mut channels: Vec<mpsc::Receiver<String>> = Vec::with_capacity(data.threads);
+        let mut channels = Vec::with_capacity(data.threads);
         let line_size = line_size(data.vars.len(), color, &data.bar);
 
-        for offset in 0..data.threads as u32 {
+        for offset in 0..data.threads {
             let (tx, rx) = mpsc::sync_channel(16);
             channels.push(rx);
             let vars_cpy = data.vars.clone();
@@ -125,12 +131,12 @@ fn print_truth_table_color(formula: &str, color: bool) -> Result<(), ParseError>
             s.spawn(move || {
                 let tree = formula.parse::<Tree>().unwrap();
                 for i in (offset..(data.max_value)).step_by(data.threads) {
-                    let line = line_from_u32(i, line_size, &vars_cpy, &tree, color, &bar);
+                    let line = line_from_bitfield(i, line_size, &vars_cpy, &tree, color, &bar);
                     tx.send(line).unwrap();
                 }
             });
         }
-        print_table(channels, &data);
+        print_table_lines(channels, &data);
     });
     Ok(())
 }
