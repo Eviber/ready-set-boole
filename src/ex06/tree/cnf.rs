@@ -45,6 +45,103 @@ fn prime_implicants_from_false_rows(false_rows: &[Row]) -> Vec<Row> {
     prime_implicants
 }
 
+fn petricks_method(mut prime_implicants: Vec<Row>, covered: Vec<bool>) -> Vec<Row> {
+    // debug fn to associate a row with a letter
+    fn row_to_letter(row: &Row, prime_implicants: &[Row]) -> char {
+        let index = prime_implicants.iter().position(|r| r == row).unwrap();
+        (index as u8 + b'A') as char
+    }
+    // now we need to find the best combination of implicants that cover all rows
+    // this is done by implementing the Petrick's method
+    // https://en.wikipedia.org/wiki/Petrick%27s_method
+    prime_implicants.retain(|r| r.id.iter().any(|&i| !covered[i]));
+    println!(
+        "prime_implicants: {:?}",
+        prime_implicants
+            .iter()
+            .map(|r| r.id.clone())
+            .collect::<Vec<_>>()
+    );
+    if prime_implicants.is_empty() {
+        return prime_implicants;
+    }
+    let mut product = Vec::new();
+    for (i, implicant) in prime_implicants.iter().enumerate() {
+        let mut sum = Vec::new();
+        for other in prime_implicants.iter().skip(i + 1) {
+            if implicant.id.iter().any(|&id| other.id.contains(&id)) {
+                sum.push(other.clone());
+            }
+        }
+        if !sum.is_empty() {
+            sum.push(implicant.clone());
+            sum.sort_unstable();
+            product.push(sum);
+        }
+    }
+    println!(
+        "product: {}",
+        product.iter().fold(String::new(), |acc, v| acc
+            + &format!(
+                "({})",
+                v.iter().fold(String::new(), |acc, r| {
+                    (if !acc.is_empty() { acc + " + " } else { acc }
+                        + &format!("{}", row_to_letter(r, &prime_implicants)))
+                })
+            ))
+    );
+    // now we distribute the product
+    let sum = distribute(product);
+    println!(
+        "sum: {}",
+        sum.iter().fold(String::new(), |acc, v| {
+            (if !acc.is_empty() { acc + " + " } else { acc }
+                + &format!(
+                    "({})",
+                    v.iter().fold(String::new(), |acc, r| {
+                        acc + &format!("{}", row_to_letter(r, &prime_implicants))
+                    })
+                ))
+        })
+    );
+    // now we need to find the smallest sum
+    sum.iter().min_by_key(|v| v.len()).unwrap().clone()
+}
+
+/// distributes a Vec of Vecs of T
+fn distribute<T: Clone + Ord>(product: Vec<Vec<T>>) -> Vec<Vec<T>> {
+    let mut sum = product.iter().fold(Vec::new(), |acc, v| {
+        if acc.is_empty() {
+            v.iter().map(|t| vec![t.clone()]).collect()
+        } else {
+            let mut new_acc = Vec::new();
+            for a in acc {
+                for t in v {
+                    let mut new_a = a.clone();
+                    new_a.push(t.clone());
+                    new_a.sort_unstable();
+                    new_a.dedup();
+                    new_acc.push(new_a);
+                }
+            }
+            new_acc
+        }
+    });
+    sum.sort_unstable();
+    sum.dedup();
+    // X + XY = X
+    sum.iter()
+        .filter(|v| {
+            !sum.iter().any(|v2| {
+                v.len() > v2.len()
+                    && v2.iter().all(|t2| v.iter().any(|t| t == t2))
+                    && v.iter().any(|t| !v2.iter().any(|t2| t == t2))
+            })
+        })
+        .cloned()
+        .collect()
+}
+
 fn essential_prime_implicants_from_prime_implicants(
     false_rows: &[Row],
     prime_implicants: Vec<Row>,
@@ -70,36 +167,24 @@ fn essential_prime_implicants_from_prime_implicants(
         }
     }
     // println!("{:?}", covered);
-    // println!("{:?}", essential_prime_implicants);
-    // now we need to find the best combination of implicants that cover all rows
-    // this is done by implementing the Petrick's method
-    // https://en.wikipedia.org/wiki/Petrick%27s_method
-    let mut petrick = Vec::new();
-    for implicant in &prime_implicants {
-        // check if the implicant covers any row that is not covered yet
-        if implicant.id.iter().any(|&id| !covered[id]) {
-            petrick.push(implicant.id.clone());
-        }
-    }
+    println!(
+        "essential_prime_implicants: {:?}",
+        essential_prime_implicants
+            .iter()
+            .map(|r| r.id.clone())
+            .collect::<Vec<_>>()
+    );
     // println!("{:?}", petrick);
-    if !petrick.is_empty() {
-        let _pos: Vec<Vec<usize>> = covered
+    println!(
+        "uncovered ids: {:?}",
+        covered
             .iter()
             .enumerate()
-            .filter(|(_, &b)| !b)
-            .map(|(i, _)| {
-                petrick
-                    .iter()
-                    .enumerate()
-                    .filter(|(_, v)| v.iter().any(|&id| id == i))
-                    .map(|(i, _)| i)
-                    .collect()
-            })
-            .collect();
-        // println!("petrick: {:?}", _pos);
-        // println!("petrick: {:?}", petrick);
-        essential_prime_implicants = prime_implicants;
-    }
+            .filter(|(i, &b)| !b && false_rows.iter().any(|r| r.id[0] == *i))
+            .map(|(i, _)| i)
+            .collect::<Vec<_>>()
+    );
+    essential_prime_implicants.append(&mut petricks_method(prime_implicants, covered));
     essential_prime_implicants
 }
 
