@@ -101,6 +101,27 @@ mod tests {
     use super::*;
     use crate::tree::*;
 
+    use std::{sync::mpsc, thread, time::Duration};
+
+    fn panic_after<T, F>(d: Duration, f: F) -> T
+    where
+        T: Send + 'static,
+        F: FnOnce() -> T,
+        F: Send + 'static,
+    {
+        let (done_tx, done_rx) = mpsc::channel();
+        let handle = thread::spawn(move || {
+            let val = f();
+            done_tx.send(()).expect("Unable to send completion signal");
+            val
+        });
+
+        match done_rx.recv_timeout(d) {
+            Ok(_) => handle.join().expect("Thread panicked"),
+            Err(_) => panic!("Thread took too long"),
+        }
+    }
+
     #[allow(dead_code)]
     fn test_cnf(formula: &str, expected: &str) {
         let cnf = conjunctive_normal_form(formula);
@@ -129,9 +150,14 @@ mod tests {
 
     #[test]
     fn ex06_random_test_cnf() {
-        let expr = random_rpn_expr(7, 6);
-        let cnf = conjunctive_normal_form(&expr);
-        assert_eq!(get_table(&cnf, &expr), get_table(&expr, &expr), "{}", expr);
+        for _ in 0..100 {
+            panic_after(Duration::from_secs(5), || {
+                let expr = random_rpn_expr(7, 6);
+                println!("\n\n\n{}", expr);
+                let cnf = conjunctive_normal_form(&expr);
+                assert_eq!(get_table(&cnf, &expr), get_table(&expr, &expr), "{}", expr);
+            })
+        }
     }
 
     #[test]

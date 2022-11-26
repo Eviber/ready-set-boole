@@ -45,12 +45,12 @@ fn prime_implicants_from_false_rows(false_rows: &[Row]) -> Vec<Row> {
     prime_implicants
 }
 
+fn usize_to_char(n: usize) -> char {
+    let v = n as u8;
+    (if v > 25 { v + b'A' - 26 } else { v + b'a' }) as char
+}
+
 fn petricks_method(mut prime_implicants: Vec<Row>, covered: Vec<bool>) -> Vec<Row> {
-    // debug fn to associate a row with a letter
-    fn row_to_letter(row: &Row, prime_implicants: &[Row]) -> char {
-        let index = prime_implicants.iter().position(|r| r == row).unwrap();
-        (index as u8 + b'A') as char
-    }
     // now we need to find the best combination of implicants that cover all rows
     // this is done by implementing the Petrick's method
     // https://en.wikipedia.org/wiki/Petrick%27s_method
@@ -65,20 +65,38 @@ fn petricks_method(mut prime_implicants: Vec<Row>, covered: Vec<bool>) -> Vec<Ro
     if prime_implicants.is_empty() {
         return prime_implicants;
     }
-    let mut product = Vec::new();
-    for (i, implicant) in prime_implicants.iter().enumerate() {
-        let mut sum = Vec::new();
-        for other in prime_implicants.iter().skip(i + 1) {
-            if implicant.id.iter().any(|&id| other.id.contains(&id)) {
-                sum.push(other.clone());
-            }
-        }
-        if !sum.is_empty() {
-            sum.push(implicant.clone());
+    let mut product = (0..covered.len())
+        .filter_map(|i| {
+            let mut sum: Vec<usize> = prime_implicants
+                .iter()
+                .enumerate()
+                .filter(|(_, r)| r.id.contains(&i))
+                .map(|(j, _)| j)
+                .collect();
             sum.sort_unstable();
-            product.push(sum);
+            if sum.is_empty() {
+                None
+            } else {
+                Some(sum)
+            }
+        })
+        .collect::<Vec<_>>();
+    print!(
+        "{}",
+        prime_implicants
+            .iter()
+            .enumerate()
+            .map(|(i, r)| format!("{}: {:?}\n", usize_to_char(i), r))
+            .collect::<String>()
+    );
+    product.sort_by(|a, b| {
+        if a.len() == b.len() {
+            a[0].cmp(&b[0])
+        } else {
+            a.len().cmp(&b.len())
         }
-    }
+    });
+    product.dedup();
     println!(
         "product: {}",
         product.iter().fold(String::new(), |acc, v| acc
@@ -86,12 +104,12 @@ fn petricks_method(mut prime_implicants: Vec<Row>, covered: Vec<bool>) -> Vec<Ro
                 "({})",
                 v.iter().fold(String::new(), |acc, r| {
                     (if !acc.is_empty() { acc + " + " } else { acc }
-                        + &format!("{}", row_to_letter(r, &prime_implicants)))
+                        + &format!("{}", usize_to_char(*r)))
                 })
             ))
     );
     // now we distribute the product
-    let sum = distribute(product);
+    let mut sum = distribute(product);
     println!(
         "sum: {}",
         sum.iter().fold(String::new(), |acc, v| {
@@ -99,34 +117,120 @@ fn petricks_method(mut prime_implicants: Vec<Row>, covered: Vec<bool>) -> Vec<Ro
                 + &format!(
                     "({})",
                     v.iter().fold(String::new(), |acc, r| {
-                        acc + &format!("{}", row_to_letter(r, &prime_implicants))
+                        acc + &format!("{}", usize_to_char(*r))
                     })
                 ))
         })
     );
     // now we need to find the smallest sum
-    sum.iter().min_by_key(|v| v.len()).unwrap().clone()
+    let min = sum.iter().map(|v| v.len()).min().unwrap();
+    sum.retain(|v| v.len() == min);
+    // and now find terms with fewest literals
+    let min = sum
+        .iter()
+        .map(|v| {
+            v.iter()
+                .map(|r| {
+                    prime_implicants[*r]
+                        .values
+                        .iter()
+                        .map(|&b| match b {
+                            OptionBool::True => 1,
+                            OptionBool::False => 2,
+                            OptionBool::DontCare => 0,
+                        })
+                        .sum::<usize>()
+                })
+                .sum::<usize>()
+        })
+        .enumerate()
+        .min_by_key(|(_, v)| *v)
+        .map(|(i, _)| i)
+        .unwrap();
+    sum[min]
+        .iter()
+        .map(|&i| prime_implicants[i].clone())
+        .collect()
 }
 
-/// distributes a Vec of Vecs of T
-fn distribute<T: Clone + Ord>(product: Vec<Vec<T>>) -> Vec<Vec<T>> {
-    let mut sum = product.iter().fold(Vec::new(), |acc, v| {
-        if acc.is_empty() {
-            v.iter().map(|t| vec![t.clone()]).collect()
-        } else {
-            let mut new_acc = Vec::new();
-            for a in acc {
-                for t in v {
-                    let mut new_a = a.clone();
-                    new_a.push(t.clone());
-                    new_a.sort_unstable();
-                    new_a.dedup();
-                    new_acc.push(new_a);
+/// distributes a Vec of Vecs of usize
+fn distribute(product: Vec<Vec<usize>>) -> Vec<Vec<usize>> {
+    // (a)(a+b+...) = a
+    // (a+b)(a+b+...) = a+b
+    // first, remove as much as possible
+    let product = product
+        .iter()
+        .filter(|v| {
+            // if any term is a subset of v, remove v
+            !product
+                .iter()
+                .any(|v2| v2.len() < v.len() && v2.iter().all(|&i| v.contains(&i)))
+        })
+        .cloned()
+        .collect::<Vec<_>>();
+    println!(
+        "post-reduction: {}",
+        product.iter().fold(String::new(), |acc, v| acc
+            + &format!(
+                "({})",
+                v.iter().fold(String::new(), |acc, r| {
+                    (if !acc.is_empty() { acc + " + " } else { acc }
+                        + &format!("{}", usize_to_char(*r)))
+                })
+            ))
+    );
+    // progressively distribute, starting with the most similar terms
+    let mut expr: Vec<Vec<Vec<usize>>> = product
+        .iter()
+        .map(|v| v.iter().map(|&i| vec![i]).collect())
+        .collect::<Vec<_>>();
+    while expr.len() > 1 {
+        for (i, elem) in expr.iter().enumerate() {
+            // find the most similar element
+            let mut min_diff = usize::max_value();
+            let mut min_diff_index = 0;
+            for (j, elem2) in expr.iter().enumerate() {
+                if i == j {
+                    continue;
+                }
+                let diff = elem
+                    .iter()
+                    .map(|v| v.iter().collect::<HashSet<_>>())
+                    .collect::<HashSet<_>>()
+                    .symmetric_difference(
+                        &elem2
+                            .iter()
+                            .map(|v| v.iter().collect::<HashSet<_>>())
+                            .collect::<HashSet<_>>(),
+                    )
+                    .count();
+                if diff < min_diff {
+                    min_diff = diff;
+                    min_diff_index = j;
                 }
             }
-            new_acc
         }
-    });
+    }
+    /*
+    (a+b)(a+c)(d+e)
+    (a+bc)(d+e)
+    (ad+ae+bcd+bce)
+
+    */
+
+    let mut sum = expr
+        .into_iter()
+        .map(|v| v.into_iter().flatten().collect::<Vec<_>>())
+        .collect::<Vec<_>>();
+    println!(
+        "sum: {}",
+        sum.iter().fold(String::new(), |acc, v| {
+            (if !acc.is_empty() { acc + " + " } else { acc }
+                + &v.iter().fold(String::new(), |acc, v| {
+                    format!("{}{}", acc, usize_to_char(*v))
+                }))
+        })
+    );
     sum.sort_unstable();
     sum.dedup();
     // X + XY = X
