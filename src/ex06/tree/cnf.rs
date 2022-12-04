@@ -55,7 +55,7 @@ fn prime_implicants_from_false_rows(false_rows: &[Row]) -> Vec<Row> {
 // also generics
 
 use std::fmt::{Display, Formatter};
-use std::ops::{Deref, DerefMut};
+use std::ops::{Deref, DerefMut, Mul};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 struct Var(usize);
@@ -168,6 +168,64 @@ impl<T> From<Vec<T>> for Sum<T> {
     }
 }
 
+#[inline]
+fn subset_of<T>(a: &[T], b: &[T]) -> bool
+where
+    T: PartialEq,
+{
+    a.len() < b.len() && a.iter().all(|x| b.contains(x))
+}
+
+impl<T> Sum<T>
+where
+    T: PartialEq,
+{
+    fn contains(&self, other: &Self) -> bool {
+        subset_of(&other.terms, &self.terms)
+    }
+}
+
+impl<T> Product<T>
+where
+    T: PartialEq,
+{
+    fn contains(&self, other: &Self) -> bool {
+        subset_of(&other.factors, &self.factors)
+    }
+}
+
+impl<T> FromIterator<T> for Product<T> {
+    fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
+        Self {
+            factors: iter.into_iter().collect(),
+        }
+    }
+}
+
+impl<T> FromIterator<T> for Sum<T> {
+    fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
+        Self {
+            terms: iter.into_iter().collect(),
+        }
+    }
+}
+
+impl<T> IntoIterator for Product<T> {
+    type Item = T;
+    type IntoIter = std::vec::IntoIter<T>;
+    fn into_iter(self) -> Self::IntoIter {
+        self.factors.into_iter()
+    }
+}
+
+impl<T> IntoIterator for Sum<T> {
+    type Item = T;
+    type IntoIter = std::vec::IntoIter<T>;
+    fn into_iter(self) -> Self::IntoIter {
+        self.terms.into_iter()
+    }
+}
+
 fn petricks_method(mut prime_implicants: Vec<Row>, covered: Vec<bool>) -> Vec<Row> {
     // now we need to find the best combination of implicants that cover all rows
     // this is done by implementing the Petrick's method
@@ -245,6 +303,81 @@ fn petricks_method(mut prime_implicants: Vec<Row>, covered: Vec<bool>) -> Vec<Ro
         .collect()
 }
 
+#[inline]
+fn difference<T>(a: &[T], b: &[T]) -> usize
+where
+    T: PartialEq,
+{
+    a.iter().filter(|&x| !b.contains(x)).count() + b.iter().filter(|&x| !a.contains(x)).count()
+}
+
+impl<T> Product<T>
+where
+    T: PartialEq,
+{
+    fn difference(&self, other: &Self) -> usize {
+        difference(&self.factors, &other.factors)
+    }
+}
+
+impl<T> Sum<T>
+where
+    T: PartialEq,
+{
+    fn difference(&self, other: &Self) -> usize {
+        difference(&self.terms, &other.terms)
+    }
+}
+
+impl<T> Mul for Sum<T>
+where
+    T: std::cmp::PartialEq + std::clone::Clone + Mul,
+{
+    type Output = Sum<Product<T>>;
+    fn mul(self, rhs: Self) -> Self::Output {
+        let commons: Vec<T> = self
+            .terms
+            .iter()
+            .filter(|&x| rhs.terms.contains(x))
+            .cloned()
+            .collect();
+        let factors: Sum<Product<T>> = self
+            .terms
+            .iter()
+            .filter(|&x| !commons.contains(x))
+            .flat_map(|x| {
+                // multiply the term with every term in the other sum that does not contain a common
+                rhs.terms
+                    .iter()
+                    .filter(|&y| !commons.contains(y))
+                    .map(|y| x.clone() * y.clone())
+                    .collect::<Sum<_>>()
+            })
+            .collect();
+        commons
+            .into_iter()
+            .map(|x| vec![x].into())
+            .chain(factors)
+            .collect()
+    }
+}
+
+impl<T> Mul for Product<T> {
+    type Output = Product<T>;
+    fn mul(self, rhs: Self) -> Self::Output {
+        let mut factors = self.factors;
+        factors.extend(rhs.factors);
+        factors.into()
+    }
+}
+
+impl Mul for Var {
+    type Output = Product<Var>;
+    fn mul(self, rhs: Self) -> Self::Output {
+        vec![self, rhs].into()
+    }
+}
+
 /// distributes a Vec of Vecs of usize
 fn distribute(product: Product<Sum<Var>>) -> Sum<Product<Var>> {
     // (a)(a+b+...) = a
@@ -252,37 +385,42 @@ fn distribute(product: Product<Sum<Var>>) -> Sum<Product<Var>> {
     // first, remove as much as possible
     let product: Product<Sum<Var>> = product
         .iter()
-        .filter(|v| {
-            // if any term is a subset of v, remove v
-            !product
-                .iter()
-                .any(|v2| v2.len() < v.len() && v2.iter().all(|&i| v.contains(&i)))
-        })
+        .filter(|v| !product.iter().any(|v2| v.contains(v2)))
         .cloned()
-        .collect::<Vec<_>>()
-        .into();
+        .collect();
     println!("post-reduction: {}", product);
     // progressively distribute, starting with the most similar terms
     let mut expr: Product<Sum<Product<Var>>> = product
-        .factors
         .into_iter()
-        .map(|v| {
-            v.iter()
-                .map(|i| Product::from(vec![*i]))
-                .collect::<Vec<_>>()
-                .into()
-        })
-        .collect::<Vec<_>>()
-        .into();
+        .map(|v| v.iter().map(|i| Product::from(vec![*i])).collect())
+        .collect();
+    println!("expr: {}", expr);
     while expr.len() > 1 {
+        // find the most similar element
+        let mut min_diff = usize::max_value();
+        let mut min_diff_index = (0, 0);
         for (i, elem) in expr.iter().enumerate() {
-            // find the most similar element
-            let mut min_diff = usize::max_value();
-            let mut min_diff_index = 0;
             for (j, elem2) in expr.iter().enumerate() {
-                todo!();
+                if i == j {
+                    continue;
+                }
+                let diff = elem.difference(elem2);
+                if diff < min_diff {
+                    min_diff = diff;
+                    min_diff_index = (i, j);
+                }
             }
         }
+        // distribute the most similar element
+        let (i, j) = min_diff_index;
+        let new_elem = expr[i].clone() * expr[j].clone();
+        // remove the old elements
+        // we need to remove the larger index first to avoid shifting the smaller index
+        let (i, j) = if i > j { (i, j) } else { (j, i) };
+        expr.remove(i);
+        expr.remove(j);
+        // and add the new element
+        expr.push(new_elem);
     }
     /*
     (a+b)(a+c)(d+e)
