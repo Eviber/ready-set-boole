@@ -22,6 +22,15 @@ impl fmt::Debug for OptionBool {
     }
 }
 
+impl fmt::Display for Row {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        for v in &self.values {
+            write!(f, "{:?}", v)?;
+        }
+        Ok(())
+    }
+}
+
 impl From<bool> for OptionBool {
     fn from(b: bool) -> Self {
         if b {

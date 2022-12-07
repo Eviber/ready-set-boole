@@ -10,6 +10,30 @@ fn false_rows_from_table(table: &[bool], bit_width: usize) -> Vec<Row> {
         .collect()
 }
 
+fn display_row(row: &Row, bit_width: usize) -> String {
+    let mut s = String::new();
+    for _ in 0..bit_width {
+        for b in &row.values {
+            match b {
+                OptionBool::True => s.push('1'),
+                OptionBool::False => s.push('0'),
+                OptionBool::DontCare => s.push('-'),
+            }
+        }
+    }
+    s
+}
+
+fn display_rows(rows: &[Row], bit_width: usize) -> String {
+    let mut s = String::new();
+    for row in rows {
+        s.push_str(&display_row(row, bit_width));
+        s.push('\n');
+    }
+    s
+}
+
+// TODO: rewrite this function
 fn prime_implicants_from_false_rows(false_rows: &[Row]) -> Vec<Row> {
     let mut done = false;
     let mut implicants: Vec<Row> = false_rows.to_vec();
@@ -22,13 +46,13 @@ fn prime_implicants_from_false_rows(false_rows: &[Row]) -> Vec<Row> {
             let mut found = false;
             for j in i + 1..implicants.len() {
                 if implicants[i].can_merge(&implicants[j]) {
-                    found = true;
-                    used[j] = true;
                     // check if the new implicant is already in the list
                     let mut new_implicant = implicants[i].merge(&implicants[j]);
                     new_implicant.id.sort_unstable();
                     if !prime_implicants.contains(&new_implicant) {
                         new_implicants.push(new_implicant);
+                        found = true;
+                        used[j] = true;
                     }
                 }
             }
@@ -39,6 +63,8 @@ fn prime_implicants_from_false_rows(false_rows: &[Row]) -> Vec<Row> {
             }
         }
         implicants = new_implicants;
+        implicants.sort_unstable();
+        implicants.dedup();
     }
     prime_implicants.sort();
     prime_implicants.dedup();
@@ -112,9 +138,14 @@ where
     T: Display,
 {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
-        let mut first = true;
+        if self.factors.len() > 1 {
+            write!(f, "(")?;
+        }
         for factor in &self.factors {
-            write!(f, "({})", factor)?;
+            write!(f, "{}", factor)?;
+        }
+        if self.factors.len() > 1 {
+            write!(f, ")")?;
         }
         Ok(())
     }
@@ -149,6 +180,9 @@ where
     T: Display,
 {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        if self.terms.len() > 1 {
+            write!(f, "(")?;
+        }
         let mut first = true;
         for term in &self.terms {
             if first {
@@ -157,6 +191,9 @@ where
                 write!(f, "+")?;
             }
             write!(f, "{}", term)?;
+        }
+        if self.terms.len() > 1 {
+            write!(f, ")")?;
         }
         Ok(())
     }
@@ -242,6 +279,7 @@ fn petricks_method(mut prime_implicants: Vec<Row>, covered: Vec<bool>) -> Vec<Ro
         return prime_implicants;
     }
     let mut product: Product<Sum<Var>> = (0..covered.len())
+        .filter(|&i| !covered[i])
         .filter_map(|i| {
             let mut sum: Sum<Var> = prime_implicants
                 .iter()
@@ -272,9 +310,13 @@ fn petricks_method(mut prime_implicants: Vec<Row>, covered: Vec<bool>) -> Vec<Ro
     // now we distribute the product
     let mut sum = distribute(product);
     println!("sum: {}", sum);
+    println!("SUM ^");
     // now we need to find the smallest sum
     let min = sum.iter().map(|v| v.len()).min().unwrap();
+    println!("min: {}", min);
     sum.retain(|v| v.len() == min);
+    println!("sum: {}", sum);
+    println!("MIN ^");
     // and now find terms with fewest literals
     let min = sum
         .iter()
@@ -329,26 +371,24 @@ where
     }
 }
 
+// TODO: merge theses
+
 impl<T> Mul for Sum<T>
 where
-    T: std::cmp::PartialEq + std::clone::Clone + Mul,
+    T: std::cmp::PartialEq + std::clone::Clone + Mul<Output = Product<T>>,
 {
     type Output = Sum<Product<T>>;
     fn mul(self, rhs: Self) -> Self::Output {
         let commons: Vec<T> = self
-            .terms
             .iter()
             .filter(|&x| rhs.terms.contains(x))
             .cloned()
             .collect();
         let factors: Sum<Product<T>> = self
-            .terms
             .iter()
             .filter(|&x| !commons.contains(x))
             .flat_map(|x| {
-                // multiply the term with every term in the other sum that does not contain a common
-                rhs.terms
-                    .iter()
+                rhs.iter()
                     .filter(|&y| !commons.contains(y))
                     .map(|y| x.clone() * y.clone())
                     .collect::<Sum<_>>()
@@ -359,6 +399,31 @@ where
             .map(|x| vec![x].into())
             .chain(factors)
             .collect()
+    }
+}
+
+impl<T> Mul for Sum<Product<T>>
+where
+    T: std::cmp::PartialEq + std::clone::Clone,
+{
+    type Output = Sum<Product<T>>;
+    fn mul(self, rhs: Self) -> Self::Output {
+        let commons: Vec<Product<T>> = self
+            .iter()
+            .filter(|&x| rhs.terms.contains(x))
+            .cloned()
+            .collect();
+        let factors: Sum<Product<T>> = self
+            .iter()
+            .filter(|&x| !commons.contains(x))
+            .flat_map(|x| {
+                rhs.iter()
+                    .filter(|&y| !commons.contains(y))
+                    .map(|y| x.clone() * y.clone())
+                    .collect::<Sum<_>>()
+            })
+            .collect();
+        commons.into_iter().chain(factors).collect()
     }
 }
 
@@ -413,7 +478,13 @@ fn distribute(product: Product<Sum<Var>>) -> Sum<Product<Var>> {
         }
         // distribute the most similar element
         let (i, j) = min_diff_index;
-        let new_elem = expr[i].clone() * expr[j].clone();
+        let mut new_elem = expr[i].clone() * expr[j].clone();
+        new_elem.iter_mut().for_each(|v| {
+            v.sort_unstable();
+            v.dedup();
+        });
+        new_elem.sort_unstable();
+        new_elem.dedup();
         // remove the old elements
         // we need to remove the larger index first to avoid shifting the smaller index
         let (i, j) = if i > j { (i, j) } else { (j, i) };
@@ -434,7 +505,7 @@ fn distribute(product: Product<Sum<Var>>) -> Sum<Product<Var>> {
     sum.sort_unstable();
     sum.dedup();
     // X + XY = X
-    sum.iter()
+    sum.iter() // TODO - big slow here very big slow here BAD
         .filter(|v| {
             !sum.iter().any(|v2| {
                 v.len() > v2.len()
@@ -515,13 +586,13 @@ impl Tree {
                 variables: self.variables.clone(),
             };
         }
-        // Step 2: generate prime implicants by combining rows
-        let prime_implicants = prime_implicants_from_false_rows(&false_rows);
         println!(
             "False rows: {:16}{:?}",
             "",
             false_rows.iter().map(|r| &r.id).collect::<Vec<_>>()
         );
+        // Step 2: generate prime implicants by combining rows
+        let prime_implicants = prime_implicants_from_false_rows(&false_rows);
         println!(
             "Prime implicants: {:10}{:?}",
             "",
@@ -558,7 +629,13 @@ impl Tree {
             }
             res.push(s);
         }
-        res.sort();
+        res.sort_by(|a, b| {
+            if a.len() == b.len() {
+                a.cmp(b)
+            } else {
+                a.len().cmp(&b.len())
+            }
+        });
         let mut res: String = res.concat();
         for _ in 0..essential_prime_implicants.len() - 1 {
             res.push('&');
