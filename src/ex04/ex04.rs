@@ -90,13 +90,7 @@ fn parse_args() -> Result<Args, String> {
                 match c {
                     'd' => dot = true,
                     'c' => color = true,
-                    'r' => {
-                        if expr.is_empty() {
-                            expr = random_rpn_expr();
-                        } else {
-                            return Err(path);
-                        }
-                    }
+                    'r' if expr.is_empty() => expr = random_rpn_expr(),
                     _ => return Err(path),
                 }
             }

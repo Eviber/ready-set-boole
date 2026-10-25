@@ -60,7 +60,13 @@ impl PartialEq for Literal {
 }
 
 impl PartialOrd for Literal {
-    fn partial_cmp(&self, other: &Literal) -> Option<std::cmp::Ordering> {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Literal {
+    fn cmp(&self, other: &Literal) -> std::cmp::Ordering {
         match (self, other) {
             (
                 Binary { op, children },
@@ -75,22 +81,13 @@ impl PartialOrd for Literal {
                 children.sort();
                 children2.sort();
                 match op.cmp(op2) {
-                    std::cmp::Ordering::Equal => children.partial_cmp(&children2),
-                    ord => Some(ord),
+                    std::cmp::Ordering::Equal => children.cmp(&children2),
+                    ord => ord,
                 }
             }
-            (Var(var1), Var(var2)) => var1.get().name.partial_cmp(&var2.get().name),
-            (Const(b1), Const(b2)) => b1.partial_cmp(b2),
-            _ => None,
-        }
-    }
-}
-
-impl Ord for Literal {
-    fn cmp(&self, other: &Literal) -> std::cmp::Ordering {
-        match self.partial_cmp(other) {
-            Some(ord) => ord,
-            None => std::cmp::Ordering::Equal,
+            (Var(var1), Var(var2)) => var1.get().name.cmp(&var2.get().name),
+            (Const(b1), Const(b2)) => b1.cmp(b2),
+            _ => std::cmp::Ordering::Equal,
         }
     }
 }
@@ -172,7 +169,7 @@ impl fmt::Display for Node {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.literal)?;
         if self.not > 0 {
-            write!(f, "{}", "!".repeat(self.not as usize))
+            write!(f, "{}", "!".repeat(self.not))
         } else {
             Ok(())
         }

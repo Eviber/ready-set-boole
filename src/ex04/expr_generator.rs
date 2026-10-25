@@ -10,7 +10,7 @@ pub fn random_rpn_expr() -> String {
         buf[0] as usize
     };
     let mut rpn = String::new();
-    let ops = vec!['&', '|', '^', '>', '=', '!'];
+    let ops = ['&', '|', '^', '>', '=', '!'];
     let vals: Vec<char> = (b'A'..=b'A' + (rng() % 26) as u8)
         .map(|x| x as char)
         .collect();

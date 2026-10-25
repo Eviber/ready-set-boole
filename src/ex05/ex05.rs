@@ -33,13 +33,7 @@ fn parse_args() -> Result<Args, String> {
             for c in arg.chars() {
                 match c {
                     'd' => dot = true,
-                    'r' => {
-                        if expr.is_empty() {
-                            expr = random_rpn_expr();
-                        } else {
-                            return Err(path);
-                        }
-                    }
+                    'r' if expr.is_empty() => expr = random_rpn_expr(),
                     _ => return Err(path),
                 }
             }

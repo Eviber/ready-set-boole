@@ -35,7 +35,7 @@ fn test_multiplier() {
     fn test(a: u32, b: u32) {
         assert_eq!(multiplier(a, b), a.wrapping_mul(b));
     }
-    let max = std::u32::MAX;
+    let max = u32::MAX;
     test(27, 15);
     test(123, 456);
     test(0, 0);

@@ -58,7 +58,7 @@ fn get_idx(node: &Node, idx: &mut HashMap<char, usize>) -> String {
             } else {
                 (b'a' + c - 26) as char
             };
-            s.push(c as char);
+            s.push(c);
             n /= 52;
         }
         *id += 1;

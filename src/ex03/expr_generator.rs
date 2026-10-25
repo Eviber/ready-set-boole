@@ -10,8 +10,8 @@ pub fn random_rpn_expr() -> String {
         buf[0] as usize
     };
     let mut rpn = String::new();
-    let ops = vec!['&', '|', '^', '>', '=', '!', '0', '1'];
-    let vals = vec!['0', '1'];
+    let ops = ['&', '|', '^', '>', '=', '!', '0', '1'];
+    let vals = ['0', '1'];
     let mut needed = 1;
     while needed > 0 {
         let op = if rpn.is_empty() {
