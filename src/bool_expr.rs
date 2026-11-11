@@ -1,11 +1,41 @@
 mod node;
 
+/// Parsed boolean expression, which can be evaluated.
 #[derive(Debug, PartialEq, Eq)]
-pub struct BooleanExpression(node::Node);
+pub struct BooleanExpression {
+    root: node::Node,
+    variables: Vec<char>,
+}
 
 impl BooleanExpression {
+    /// Evaluates the expression.
+    ///
+    /// If there are variables, all are set to false
     pub fn eval(&self) -> bool {
-        self.0.eval()
+        self.root.eval()
+    }
+
+    /// Evaluates the expression with each variable set according the the bitfield `vars`.
+    ///
+    /// Each existing variable is set with the last unused bit, in reverse alphabetical order.
+    ///
+    /// For the expression `CX&G^`, `vars` define the variables as such:
+    /// `0000_0000_0000_0000_0000_0000_0000_0CGX`
+    pub fn eval_vars(&self, vars: u32) -> bool {
+        self.root.eval_vars(vars)
+    }
+
+    /// Returns a slice of all variables present in the expression, in alphabetical order.
+    pub fn variables(&self) -> &[char] {
+        &self.variables
+    }
+
+    /// Returns the number of different variables in the expression.
+    ///
+    /// Note: a variable with multiple instances is still one variable.
+    /// This means that `AB^A|` has 2 variables, not 3.
+    pub fn variables_count(&self) -> usize {
+        self.variables.len()
     }
 }
 
@@ -13,7 +43,9 @@ impl std::str::FromStr for BooleanExpression {
     type Err = node::ParseError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(BooleanExpression(s.parse()?))
+        let root = s.parse()?;
+        let variables: Vec<_> = ('A'..='Z').filter(|&c| s.contains(c)).collect();
+        Ok(BooleanExpression { root, variables })
     }
 }
 

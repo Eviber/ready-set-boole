@@ -8,6 +8,7 @@ pub enum Token {
     BinOp(BinOpToken),
     Not,
     Literal(bool),
+    Variable(char),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -24,6 +25,7 @@ impl TryFrom<char> for Token {
 
     fn try_from(c: char) -> Result<Self, Self::Error> {
         match c {
+            'A'..='Z' => Ok(Variable(c)),
             '0' => Ok(Literal(false)),
             '1' => Ok(Literal(true)),
             '!' => Ok(Not),
@@ -40,6 +42,7 @@ impl TryFrom<char> for Token {
 impl std::fmt::Display for Token {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let c = match self {
+            Variable(c) => *c,
             Literal(false) => '0',
             Literal(true) => '1',
             Not => '!',

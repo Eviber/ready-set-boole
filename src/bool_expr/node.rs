@@ -14,6 +14,10 @@ pub(super) enum Node {
     },
     Not(Box<Node>),
     Literal(bool),
+    Variable {
+        name: char,
+        idx: u32,
+    },
 }
 
 impl Node {
@@ -33,11 +37,11 @@ impl Node {
         }
     }
 
-    pub(super) fn eval(&self) -> bool {
+    pub(super) fn eval_vars(&self, vars: u32) -> bool {
         match self {
             Node::BinOp { op, lhs, rhs } => {
-                let lhs = lhs.eval();
-                let rhs = rhs.eval();
+                let lhs = lhs.eval_vars(vars);
+                let rhs = rhs.eval_vars(vars);
                 match op {
                     BinOpToken::And => lhs && rhs,
                     BinOpToken::Or => lhs || rhs,
@@ -46,9 +50,14 @@ impl Node {
                     BinOpToken::Eq => lhs == rhs,
                 }
             }
-            Node::Not(operand) => !operand.eval(),
+            Node::Not(operand) => !operand.eval_vars(vars),
             Node::Literal(b) => *b,
+            Node::Variable { name: _, idx } => vars >> idx & 1 == 1,
         }
+    }
+
+    pub(super) fn eval(&self) -> bool {
+        self.eval_vars(0)
     }
 }
 
@@ -58,6 +67,7 @@ impl From<Node> for Token {
             Node::BinOp { op, .. } => Token::BinOp(op),
             Node::Not(_) => Token::Not,
             Node::Literal(c) => Token::Literal(c),
+            Node::Variable { name, .. } => Token::Variable(name),
         }
     }
 }
@@ -67,10 +77,35 @@ impl std::str::FromStr for Node {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let mut stack = Vec::with_capacity(s.len());
+        let mut tokens = Vec::new();
+        let mut vars = [false; 26];
 
         for token in token::tokenize(s) {
             let token = token?;
+            if let Token::Variable(c) = token {
+                assert!(c.is_ascii_uppercase());
+                vars[(c as u8 - b'A') as usize] = true;
+            }
+            tokens.push(token);
+        }
+
+        let mut vars_idx = [None; 26];
+        let mut idx = 0;
+        for c in ('A'..='Z').rev() {
+            let i = (c as u8 - b'A') as usize;
+            if vars[i] {
+                vars_idx[i] = Some(idx);
+                idx += 1;
+            }
+        }
+
+        for token in tokens {
             let node = match token {
+                Token::Variable(c) => Node::Variable {
+                    name: c,
+                    idx: vars_idx[(c as u8 - b'A') as usize]
+                        .expect("All variables should be indexed"),
+                },
                 Token::Literal(b) => Node::literal(b),
                 Token::Not => {
                     let operand = stack.pop().ok_or(ParseError::MissingOperand(token))?;

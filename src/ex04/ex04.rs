@@ -2,39 +2,26 @@ use ready_set_boole::BooleanExpression;
 use std::fmt::Write;
 
 fn truth_table(formula: &str) -> String {
-    let variables: Vec<_> = ('A'..='Z').filter(|&c| formula.contains(c)).collect();
-    if variables.is_empty() {
-        let expr: BooleanExpression = formula
-            .parse()
-            .expect("formula must be a valid boolean expression");
-        return format!("Always {:?}", expr.eval());
-    }
+    let expr: BooleanExpression = formula
+        .parse()
+        .expect("formula must be a valid boolean expression");
     let mut res = String::new();
+    let variables = expr.variables().to_vec();
     for &variable in &variables {
         let _ = write!(res, "| {} ", variable);
     }
     res.push_str("| = |\n");
     let _ = writeln!(res, "{}|", "|---".repeat(variables.len() + 1));
     for bitfield in 0..(2_u32.pow(variables.len() as u32)) {
-        let mut formula = formula.to_string();
         res.push('|');
-        for (value, variable) in variables.iter().enumerate().map(|(i, &v)| {
-            (
-                if (bitfield >> ((variables.len() - i - 1) as u32) & 1) == 0 {
-                    "0"
-                } else {
-                    "1"
-                },
-                v,
-            )
-        }) {
-            formula = formula.replace(variable, value);
+        for idx in (0..variables.len()).rev() {
+            let value = bitfield >> idx & 1;
             let _ = write!(res, " {} |", value);
         }
         let _ = writeln!(
             res,
             " {} |",
-            formula.parse::<BooleanExpression>().unwrap().eval() as u8
+            expr.eval_vars(bitfield) as u8
         );
     }
     res
