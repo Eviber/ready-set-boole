@@ -28,7 +28,16 @@ fn print_truth_table(formula: &str) {
 }
 
 fn main() {
-    print_truth_table("AB&C|");
+    let mut args = std::env::args().skip(1);
+    if args.len() > 1 {
+        eprintln!("Error: more than one argument");
+        return;
+    }
+    if let Some(arg) = args.next() {
+        print_truth_table(&arg);
+    } else {
+        print_truth_table("AB&C|");
+    };
 }
 
 #[cfg(test)]
