@@ -42,16 +42,20 @@ fn main() {
 }
 
 #[cfg(test)]
-mod tests {
+mod ex04 {
     use super::truth_table;
+
+    fn test_truth_table(formula: &str, expected_truth_table: &str) {
+        let mut s: Vec<u8> = Vec::new();
+        truth_table(&mut s, formula.parse().unwrap()).unwrap();
+        let s = str::from_utf8(&s).unwrap();
+        assert_eq!(expected_truth_table, s);
+    }
 
     #[test]
     fn subject_test() {
-        let mut s: Vec<u8> = Vec::new();
-        truth_table(&mut s, "AB&C|".parse().unwrap()).unwrap();
-        let s = str::from_utf8(&s).unwrap();
-        assert_eq!(
-            s,
+        test_truth_table(
+            "AB&C|",
             "\
 | A | B | C | = |
 |---|---|---|---|
@@ -63,7 +67,108 @@ mod tests {
 | 1 | 0 | 1 | 1 |
 | 1 | 1 | 0 | 1 |
 | 1 | 1 | 1 | 1 |
-"
+",
+        );
+    }
+
+    #[test]
+    fn single_var() {
+        test_truth_table(
+            "A",
+            "\
+| A | = |
+|---|---|
+| 0 | 0 |
+| 1 | 1 |
+",
+        );
+    }
+
+    #[test]
+    fn single_not() {
+        test_truth_table(
+            "A!",
+            "\
+| A | = |
+|---|---|
+| 0 | 1 |
+| 1 | 0 |
+",
+        );
+    }
+
+    #[test]
+    fn and() {
+        test_truth_table(
+            "AB&",
+            "\
+| A | B | = |
+|---|---|---|
+| 0 | 0 | 0 |
+| 0 | 1 | 0 |
+| 1 | 0 | 0 |
+| 1 | 1 | 1 |
+",
+        );
+    }
+
+    #[test]
+    fn or() {
+        test_truth_table(
+            "AB|",
+            "\
+| A | B | = |
+|---|---|---|
+| 0 | 0 | 0 |
+| 0 | 1 | 1 |
+| 1 | 0 | 1 |
+| 1 | 1 | 1 |
+",
+        );
+    }
+
+    #[test]
+    fn xor() {
+        test_truth_table(
+            "AB^",
+            "\
+| A | B | = |
+|---|---|---|
+| 0 | 0 | 0 |
+| 0 | 1 | 1 |
+| 1 | 0 | 1 |
+| 1 | 1 | 0 |
+",
+        );
+    }
+
+    #[test]
+    fn imply() {
+        test_truth_table(
+            "AB>",
+            "\
+| A | B | = |
+|---|---|---|
+| 0 | 0 | 1 |
+| 0 | 1 | 1 |
+| 1 | 0 | 0 |
+| 1 | 1 | 1 |
+",
+        );
+    }
+
+    #[test]
+    fn eq() {
+        test_truth_table(
+            "AB=",
+            "\
+| A | B | = |
+|---|---|---|
+| 0 | 0 | 1 |
+| 0 | 1 | 0 |
+| 1 | 0 | 0 |
+| 1 | 1 | 1 |
+",
         );
     }
 }
