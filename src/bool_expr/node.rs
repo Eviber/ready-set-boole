@@ -52,6 +52,16 @@ impl Node {
     }
 }
 
+impl From<Node> for Token {
+    fn from(value: Node) -> Self {
+        match value {
+            Node::BinOp { op, .. } => Token::BinOp(op),
+            Node::Not(_) => Token::Not,
+            Node::Literal(c) => Token::Literal(c),
+        }
+    }
+}
+
 impl std::str::FromStr for Node {
     type Err = ParseError;
 
@@ -75,7 +85,9 @@ impl std::str::FromStr for Node {
             stack.push(node);
         }
         if stack.len() > 1 {
-            return Err(ParseError::UnbalancedExpression);
+            let rhs = stack.pop().unwrap();
+            let lhs = stack.pop().unwrap();
+            return Err(ParseError::UnbalancedExpression(lhs.into(), rhs.into()));
         }
         stack.pop().ok_or(ParseError::EmptyExpression)
     }

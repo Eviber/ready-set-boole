@@ -39,17 +39,17 @@ mod test {
         test_err("1^", MissingOperand(BinOp(Xor)));
         test_err("!", MissingOperand(Not));
 
-        test_err("00&1", UnbalancedExpression);
-        test_err("01|1", UnbalancedExpression);
-        test_err("10=1", UnbalancedExpression);
-        test_err("11^1", UnbalancedExpression);
-        test_err("00>1", UnbalancedExpression);
+        test_err("00&1", UnbalancedExpression(BinOp(And), Literal(true)));
+        test_err("101|", UnbalancedExpression(Literal(true), BinOp(Or)));
+        test_err("10=0", UnbalancedExpression(BinOp(Eq), Literal(false)));
+        test_err("011^", UnbalancedExpression(Literal(false), BinOp(Xor)));
+        test_err("00>10&", UnbalancedExpression(BinOp(Imply), BinOp(And)));
 
         test_err("1x|", UnexpectedCharacterError('x'));
-        test_err("1x&", UnexpectedCharacterError('x'));
-        test_err("1x>", UnexpectedCharacterError('x'));
-        test_err("1x=", UnexpectedCharacterError('x'));
-        test_err("1x^", UnexpectedCharacterError('x'));
-        test_err("1x!", UnexpectedCharacterError('x'));
+        test_err("1y&", UnexpectedCharacterError('y'));
+        test_err("1$>", UnexpectedCharacterError('$'));
+        test_err("1;=", UnexpectedCharacterError(';'));
+        test_err("1 ^", UnexpectedCharacterError(' '));
+        test_err("1+!", UnexpectedCharacterError('+'));
     }
 }
