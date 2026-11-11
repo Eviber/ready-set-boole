@@ -1,22 +1,23 @@
-use std::io::{stdout, Write};
+use std::io::{stdout, Result, Write};
 
 use ready_set_boole::BooleanExpression;
 
-fn truth_table(w: &mut impl Write, expr: BooleanExpression) {
+fn truth_table(w: &mut impl Write, expr: BooleanExpression) -> Result<()> {
     for variable in expr.variables() {
-        let _ = write!(w, "| {} ", variable);
+        write!(w, "| {} ", variable)?;
     }
-    let _ = writeln!(w, "| = |");
+    writeln!(w, "| = |")?;
     for _ in 0..=expr.variables_count() {
-        let _ = write!(w, "|---");
+        write!(w, "|---")?;
     }
-    let _ = writeln!(w, "|");
+    writeln!(w, "|")?;
     for bitfield in 0..(1 << expr.variables_count()) {
         for idx in (0..expr.variables_count()).rev() {
-            let _ = write!(w, "| {} ", bitfield >> idx & 1);
+            write!(w, "| {} ", bitfield >> idx & 1)?;
         }
-        let _ = writeln!(w, "| {} |", expr.eval_vars(bitfield) as u8);
+        writeln!(w, "| {} |", expr.eval_vars(bitfield) as u8)?;
     }
+    Ok(())
 }
 
 fn print_truth_table(formula: &str) {
@@ -24,7 +25,7 @@ fn print_truth_table(formula: &str) {
         Ok(expr) => expr,
         Err(e) => return eprintln!("{e}"),
     };
-    truth_table(&mut stdout().lock(), expr);
+    let _ = truth_table(&mut stdout().lock(), expr);
 }
 
 fn main() {
@@ -47,7 +48,7 @@ mod tests {
     #[test]
     fn subject_test() {
         let mut s: Vec<u8> = Vec::new();
-        truth_table(&mut s, "AB&C|".parse().unwrap());
+        truth_table(&mut s, "AB&C|".parse().unwrap()).unwrap();
         let s = str::from_utf8(&s).unwrap();
         assert_eq!(
             s,
